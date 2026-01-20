@@ -9,8 +9,9 @@ class RunnerS3Client:
     
     def __init__(self):
         """Initialize S3 client."""
-        self.bucket_name = os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner')
-        self.prefix = os.getenv('BUCKET_PREFIX', '').rstrip('/') + '/' if os.getenv('BUCKET_PREFIX', '') else ''
+        self.bucket_name = os.getenv('RUNNER_BUCKET', 'not-set')
+        self.prefix = os.getenv('RUNNER_BUCKET_PREFIX', '').rstrip('/') + '/' if os.getenv('BUCKET_PREFIX', '') else ''
+
         self.s3_client = boto3.client(
             's3',
             endpoint_url=os.getenv('AWS_ENDPOINT_URL'),

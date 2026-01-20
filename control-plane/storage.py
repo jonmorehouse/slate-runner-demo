@@ -19,13 +19,18 @@ class S3Storage:
         """
         self.bucket_name = bucket_name
         self.prefix = prefix.rstrip('/') + '/' if prefix else ''
-        self.s3_client = boto3.client(
-            's3',
-            endpoint_url=os.getenv('AWS_ENDPOINT_URL'),
-            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-            region_name=os.getenv('AWS_REGION', 'auto')
-        )
+        
+        # Use boto3's credential chain (env vars, IAM roles, profiles, etc.)
+        # Only pass region and endpoint if set
+        s3_kwargs = {}
+        
+        if os.getenv('AWS_REGION'):
+            s3_kwargs['region_name'] = os.getenv('AWS_REGION')
+        
+        if os.getenv('AWS_ENDPOINT_URL'):
+            s3_kwargs['endpoint_url'] = os.getenv('AWS_ENDPOINT_URL')
+        
+        self.s3_client = boto3.client('s3', **s3_kwargs)
         print(f"Initialized S3 storage: bucket={self.bucket_name}, prefix={self.prefix}")
     
     def get(self, key: str) -> Optional[Dict[str, Any]]:
@@ -95,8 +100,10 @@ class MetaStorage:
     
     def __init__(self):
         """Initialize meta storage."""
-        bucket_name = os.getenv('SLATE_META_BUCKET', 'slate-demo-meta')
-        prefix = os.getenv('BUCKET_PREFIX', '')
+        # Use CONTROL_PLANE_BUCKET and CONTROL_PLANE_BUCKET_PREFIX
+        # Fall back to legacy SLATE_META_BUCKET and BUCKET_PREFIX for backward compatibility
+        bucket_name = os.getenv('CONTROL_PLANE_BUCKET', os.getenv('SLATE_META_BUCKET', 'slate-demo-meta'))
+        prefix = os.getenv('CONTROL_PLANE_BUCKET_PREFIX', os.getenv('BUCKET_PREFIX', ''))
         self.storage = S3Storage(bucket_name, prefix)
     
     # Agent operations
@@ -216,8 +223,10 @@ class RunnerStorage:
     
     def __init__(self):
         """Initialize runner storage."""
-        bucket_name = os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner')
-        prefix = os.getenv('BUCKET_PREFIX', '')
+        # Use RUNNER_BUCKET and RUNNER_BUCKET_PREFIX (for control-plane access to runner data)
+        # Fall back to legacy SLATE_RUNNER_BUCKET and BUCKET_PREFIX for backward compatibility
+        bucket_name = os.getenv('CONTROL_PLANE_BUCKET')
+        prefix = os.getenv('CONTROL_PLANE_BUCKET_PREFIX') + "/runners"
         self.storage = S3Storage(bucket_name, prefix)
     
     def save_state(self, job_id: str, state_data: bytes) -> str:

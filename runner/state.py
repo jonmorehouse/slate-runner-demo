@@ -3,6 +3,7 @@ import json
 import os
 from typing import Optional, Dict, Any
 from datetime import datetime
+from botocore.client import Config
 import boto3
 from botocore.exceptions import ClientError
 
@@ -17,17 +18,13 @@ class RunnerStateManager:
             runner_id: Unique runner identifier
         """
         self.runner_id = runner_id
-        self.bucket_name = os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner')
+        self.bucket_name = os.getenv('RUNNER_BUCKET', 'slate-demo-runner')
         self.prefix = os.getenv('BUCKET_PREFIX', '').rstrip('/') + '/' if os.getenv('BUCKET_PREFIX', '') else ''
         self.state_key = f"{self.prefix}runner-state/{runner_id}/state.json"
         
-        self.s3_client = boto3.client(
-            's3',
-            endpoint_url=os.getenv('AWS_ENDPOINT_URL'),
-            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-            region_name=os.getenv('AWS_REGION', 'auto')
-        )
+        session = boto3.Session(profile_name='tigris')
+        self.s3_client = session.client(
+            's3', config=Config(s3={'addressing_style': 'virtual'}))
         
         print(f"[StateManager] Using bucket={self.bucket_name}, prefix={self.prefix}, state_key={self.state_key}")
         self._state = self._load_state()

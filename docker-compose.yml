@@ -8,12 +8,21 @@ services:
     ports:
       - "5000:5000"
     environment:
+      # New environment variables (preferred)
+      - CONTROL_PLANE_BUCKET=${CONTROL_PLANE_BUCKET}
+      - CONTROL_PLANE_BUCKET_PREFIX=${CONTROL_PLANE_BUCKET_PREFIX}
+      - RUNNER_BUCKET=${RUNNER_BUCKET}
+      - RUNNER_BUCKET_PREFIX=${RUNNER_BUCKET_PREFIX}
+      # Legacy variables (for backward compatibility)
       - SLATE_META_BUCKET=${SLATE_META_BUCKET}
       - SLATE_RUNNER_BUCKET=${SLATE_RUNNER_BUCKET}
+      - BUCKET_PREFIX=${BUCKET_PREFIX}
+      # AWS configuration (uses credential chain)
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
       - AWS_REGION=${AWS_REGION}
+      # Flask configuration
       - FLASK_ENV=development
       - SECRET_KEY=${SECRET_KEY}
     volumes:
@@ -27,17 +36,26 @@ services:
       context: ./runner
       dockerfile: Dockerfile
     environment:
+      # Runner configuration
       - RUNNER_ID=runner-001
       - RUNNER_NAME=Runner 1
       - CONTROL_PLANE_URL=http://control-plane:5000
       - POLL_INTERVAL=5
+      # SlateDB configuration
+      - RUNNER_BUCKET=${RUNNER_BUCKET}
+      - RUNNER_BUCKET_PREFIX=${RUNNER_BUCKET_PREFIX}
+      - SLATEDB_TMP_DIR=/tmp/slatedb
+      # Legacy variables (for backward compatibility)
       - SLATE_RUNNER_BUCKET=${SLATE_RUNNER_BUCKET}
+      - BUCKET_PREFIX=${BUCKET_PREFIX}
+      # AWS configuration (uses credential chain)
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
       - AWS_REGION=${AWS_REGION}
     volumes:
       - ./runner:/app
+      - runner-1-slatedb:/tmp/slatedb
     depends_on:
       - control-plane
     restart: unless-stopped
@@ -49,22 +67,35 @@ services:
       context: ./runner
       dockerfile: Dockerfile
     environment:
+      # Runner configuration
       - RUNNER_ID=runner-002
       - RUNNER_NAME=Runner 2
       - CONTROL_PLANE_URL=http://control-plane:5000
       - POLL_INTERVAL=5
+      # SlateDB configuration
+      - RUNNER_BUCKET=${RUNNER_BUCKET}
+      - RUNNER_BUCKET_PREFIX=${RUNNER_BUCKET_PREFIX}
+      - SLATEDB_TMP_DIR=/tmp/slatedb
+      # Legacy variables (for backward compatibility)
       - SLATE_RUNNER_BUCKET=${SLATE_RUNNER_BUCKET}
+      - BUCKET_PREFIX=${BUCKET_PREFIX}
+      # AWS configuration (uses credential chain)
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
       - AWS_REGION=${AWS_REGION}
     volumes:
       - ./runner:/app
+      - runner-2-slatedb:/tmp/slatedb
     depends_on:
       - control-plane
     restart: unless-stopped
     networks:
       - slate-network
+
+volumes:
+  runner-1-slatedb:
+  runner-2-slatedb:
 
 networks:
   slate-network:

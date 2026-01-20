@@ -4,3 +4,4 @@ python-dotenv==1.0.0
 gitpython==3.1.40
 psutil==5.9.6
 python-terraform==0.10.1
+slatedb>=0.10.0
