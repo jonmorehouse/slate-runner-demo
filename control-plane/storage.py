@@ -2,7 +2,7 @@
 import json
 import os
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
 
@@ -257,13 +257,13 @@ class RunnerStorage:
             return False, "Job not found"
         
         current_status = job_data.get('status')
-        if current_status != JobStatus.PENDING.value:
+        if current_status != JobStatus.QUEUED.value:
             return False, f"Job status is {current_status}, expected pending"
         
         # Update job to running
         job = Job.from_dict(job_data)
-        job.status = JobStatus.RUNNING.value
-        job.started_at = datetime.utcnow().isoformat()
+        job.status = JobStatus.IN_PROGRESS.value
+        job.started_at = datetime.now(timezone.utc).isoformat()
         job.agent_id = agent_id
         
         self.save_job(job.to_dict())
@@ -296,9 +296,9 @@ class RunnerStorage:
         
         # Define valid transitions
         valid_transitions = {
-            JobStatus.PENDING.value: [JobStatus.RUNNING.value],
-            JobStatus.RUNNING.value: [JobStatus.COMPLETED.value, JobStatus.FAILED.value],
-            JobStatus.COMPLETED.value: [],
+            JobStatus.QUEUED.value: [JobStatus.IN_PROGRESS.value],
+            JobStatus.IN_PROGRESS.value: [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value],
+            JobStatus.SUCCESSFUL.value: [],
             JobStatus.FAILED.value: []
         }
         
@@ -311,10 +311,10 @@ class RunnerStorage:
         job.status = to_status
         
         # Set timestamps
-        if to_status == JobStatus.RUNNING.value:
-            job.started_at = datetime.utcnow().isoformat()
-        elif to_status in [JobStatus.COMPLETED.value, JobStatus.FAILED.value]:
-            job.completed_at = datetime.utcnow().isoformat()
+        if to_status == JobStatus.IN_PROGRESS.value:
+            job.started_at = datetime.now(timezone.utc).isoformat()
+        elif to_status in [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value]:
+            job.completed_at = datetime.now(timezone.utc).isoformat()
         
         # Apply additional updates
         for key, value in updates.items():

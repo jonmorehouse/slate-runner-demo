@@ -1,7 +1,7 @@
 """Main Flask application for the control plane."""
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -87,7 +87,7 @@ def index():
             agent.status = AgentStatus.OFFLINE.value
             # Track disconnection time if transitioning from online to offline
             if was_online:
-                agent.disconnected_at = datetime.utcnow().isoformat()
+                agent.disconnected_at = datetime.now(timezone.utc).isoformat()
         
         meta_storage.save_agent(agent.to_dict())
     
@@ -122,7 +122,7 @@ def graph_view():
         else:
             agent.status = AgentStatus.OFFLINE.value
             if was_online:
-                agent.disconnected_at = datetime.utcnow().isoformat()
+                agent.disconnected_at = datetime.now(timezone.utc).isoformat()
         
         meta_storage.save_agent(agent.to_dict())
     
@@ -175,7 +175,7 @@ def agents_partial():
             agent.status = AgentStatus.OFFLINE.value
             # Track disconnection time if transitioning from online to offline
             if was_online:
-                agent.disconnected_at = datetime.utcnow().isoformat()
+                agent.disconnected_at = datetime.now(timezone.utc).isoformat()
         
         meta_storage.save_agent(agent.to_dict())
     
@@ -215,10 +215,10 @@ def register_agent():
         # Track reconnection if it was offline
         was_offline = agent.status == AgentStatus.OFFLINE.value
         if was_offline:
-            agent.connected_at = datetime.utcnow().isoformat()
+            agent.connected_at = datetime.now(timezone.utc).isoformat()
             agent.connection_count = agent.connection_count + 1
         
-        agent.last_heartbeat = datetime.utcnow().isoformat()
+        agent.last_heartbeat = datetime.now(timezone.utc).isoformat()
         agent.status = AgentStatus.ONLINE.value
         agent.name = data.get('name', agent.name)
         if data.get('metadata'):
@@ -229,10 +229,10 @@ def register_agent():
             agent_id=agent_id,
             name=data.get('name', agent_id),
             status=AgentStatus.ONLINE.value,
-            last_heartbeat=datetime.utcnow().isoformat(),
+            last_heartbeat=datetime.now(timezone.utc).isoformat(),
             metadata=data.get('metadata'),
-            created_at=datetime.utcnow().isoformat(),
-            connected_at=datetime.utcnow().isoformat(),
+            created_at=datetime.now(timezone.utc).isoformat(),
+            connected_at=datetime.now(timezone.utc).isoformat(),
             connection_count=1
         )
     
@@ -277,7 +277,7 @@ def adopt_agent(agent_id):
     
     # Mark as adopted
     agent.adopted = True
-    agent.adopted_at = datetime.utcnow().isoformat()
+    agent.adopted_at = datetime.now(timezone.utc).isoformat()
     
     # Optional: track who adopted
     data = request.json or {}
@@ -359,7 +359,7 @@ def upload_agent_state(agent_id):
                 })
     
     agent.terraform_resources = resources
-    agent.last_state_sync = datetime.utcnow().isoformat()
+    agent.last_state_sync = datetime.now(timezone.utc).isoformat()
     
     meta_storage.save_agent(agent.to_dict())
     
@@ -392,14 +392,14 @@ def submit_health_check():
     agent_data = meta_storage.get_agent(agent_id)
     if agent_data:
         agent = Agent.from_dict(agent_data)
-        agent.last_heartbeat = datetime.utcnow().isoformat()
+        agent.last_heartbeat = datetime.now(timezone.utc).isoformat()
         agent.status = AgentStatus.ONLINE.value
         meta_storage.save_agent(agent.to_dict())
     
     # Save health check
     health_check = HealthCheck(
         agent_id=agent_id,
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(timezone.utc).isoformat(),
         cpu_percent=data.get('cpu_percent'),
         memory_percent=data.get('memory_percent'),
         disk_percent=data.get('disk_percent'),
@@ -417,44 +417,64 @@ def submit_health_check():
 @app.route('/api/jobs', methods=['POST'])
 def create_job():
     """Create a new job."""
-    data = request.json
-    
-    valid, error = validate_required_fields(data, ['agent_id', 'repo_url'])
-    if not valid:
-        return jsonify({'error': error}), 400
-    
-    if not validate_repo_url(data['repo_url']):
-        return jsonify({'error': 'Invalid repository URL'}), 400
-    
-    operation = data.get('operation', 'plan')
-    if not validate_operation(operation):
-        return jsonify({'error': 'Invalid operation type'}), 400
-    
-    agent_id = data.get('agent_id')
-    repo_url = data.get('repo_url')
-    operation = data.get('operation', 'plan')
-    
-    if not agent_id or not repo_url:
-        return jsonify({'error': 'agent_id and repo_url are required'}), 400
-    
-    # Verify agent exists
-    agent_data = meta_storage.get_agent(agent_id)
-    if not agent_data:
-        return jsonify({'error': 'Agent not found'}), 404
-    
-    job = Job(
-        job_id=str(uuid.uuid4()),
-        agent_id=agent_id,
-        repo_url=repo_url,
-        operation=operation,
-        status=JobStatus.PENDING.value,
-        env_vars=data.get('env_vars'),
-        tfvars=data.get('tfvars'),
-        created_at=datetime.utcnow().isoformat()
-    )
-    
-    meta_storage.save_job(job.to_dict())
-    return jsonify(job.to_dict()), 201
+    try:
+        data = request.json
+        
+        # Debug logging
+        print(f"[API] POST /api/jobs - Content-Type: {request.content_type}")
+        print(f"[API] Request data: {data}")
+        
+        if not data:
+            return jsonify({'error': 'Request body must be JSON'}), 400
+        
+        valid, error = validate_required_fields(data, ['agent_id', 'repo_url'])
+        if not valid:
+            print(f"[API] Validation error: {error}")
+            return jsonify({'error': error}), 400
+        
+        if not validate_repo_url(data['repo_url']):
+            return jsonify({'error': 'Invalid repository URL'}), 400
+        
+        operation = data.get('operation', 'plan')
+        if not validate_operation(operation):
+            return jsonify({'error': 'Invalid operation type'}), 400
+        
+        agent_id = data.get('agent_id')
+        repo_url = data.get('repo_url')
+        
+        # Verify agent exists
+        agent_data = meta_storage.get_agent(agent_id)
+        if not agent_data:
+            return jsonify({'error': 'Agent not found'}), 404
+        
+        # Handle optional fields - normalize empty to None
+        env_vars = data.get('env_vars') or None
+        tfvars = data.get('tfvars') or None
+        tf_version = data.get('tf_version') or None
+        working_dir = data.get('working_dir') or None
+        
+        job = Job(
+            job_id=str(uuid.uuid4()),
+            agent_id=agent_id,
+            repo_url=repo_url,
+            operation=operation,
+            status=JobStatus.QUEUED.value,
+            env_vars=env_vars,
+            tfvars=tfvars,
+            tf_version=tf_version,
+            working_dir=working_dir,
+            created_at=datetime.now(timezone.utc).isoformat()
+        )
+        
+        print(f"[API] Created job {job.job_id} for agent {agent_id}")
+        meta_storage.save_job(job.to_dict())
+        return jsonify(job.to_dict()), 201
+        
+    except Exception as e:
+        print(f"[API] Error creating job: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/jobs', methods=['GET'])
@@ -473,7 +493,7 @@ def get_pending_jobs():
         return jsonify({'error': 'agent_id is required'}), 400
     
     jobs = meta_storage.list_jobs(agent_id=agent_id)
-    pending = [j for j in jobs if j['status'] == JobStatus.PENDING.value]
+    pending = [j for j in jobs if j['status'] == JobStatus.QUEUED.value]
     
     # Return only the first pending job
     if pending:
@@ -542,10 +562,10 @@ def update_job(job_id):
     # Update fields
     if 'status' in data:
         job.status = data['status']
-        if data['status'] == JobStatus.RUNNING.value and not job.started_at:
-            job.started_at = datetime.utcnow().isoformat()
-        elif data['status'] in [JobStatus.COMPLETED.value, JobStatus.FAILED.value]:
-            job.completed_at = datetime.utcnow().isoformat()
+        if data['status'] == JobStatus.IN_PROGRESS.value and not job.started_at:
+            job.started_at = datetime.now(timezone.utc).isoformat()
+        elif data['status'] in [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value]:
+            job.completed_at = datetime.now(timezone.utc).isoformat()
     
     if 'output' in data:
         job.output = data['output']
@@ -583,7 +603,7 @@ def send_agent_command(agent_id):
         agent_id=agent_id,
         command_type=command_type,
         params=data.get('params'),
-        created_at=datetime.utcnow().isoformat()
+        created_at=datetime.now(timezone.utc).isoformat()
     )
     
     meta_storage.save_command(command.to_dict())
@@ -602,7 +622,7 @@ def update_command(command_id):
     
     if 'executed' in data:
         command.executed = data['executed']
-        command.executed_at = datetime.utcnow().isoformat()
+        command.executed_at = datetime.now(timezone.utc).isoformat()
     
     meta_storage.save_command(command.to_dict())
     return jsonify(command.to_dict())

@@ -6,24 +6,43 @@ import shutil
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 from git import Repo
+from tf_manager import TerraformVersionManager
 
 
 class TerraformExecutor:
     """Executes Terraform operations."""
     
-    def __init__(self, workdir: str = None):
-        """Initialize executor."""
+    def __init__(self, workdir: str = None, tf_version: Optional[str] = None):
+        """Initialize executor.
+        
+        Args:
+            workdir: Base working directory for terraform operations
+            tf_version: Specific Terraform version to use (overrides env var)
+        """
         self.workdir = workdir or tempfile.mkdtemp(prefix='terraform-')
+        
+        # Initialize Terraform version manager
+        self.tf_manager = TerraformVersionManager(version=tf_version)
+        self.terraform_bin = self.tf_manager.ensure_installed()
+        print(f"[TerraformExecutor] Using Terraform binary: {self.terraform_bin}")
     
     def execute_job(
         self,
         repo_url: str,
         operation: str,
         env_vars: Optional[Dict[str, str]] = None,
-        tfvars: Optional[str] = None
+        tfvars: Optional[str] = None,
+        working_dir: Optional[str] = None
     ) -> Tuple[bool, str, Optional[str]]:
         """
         Execute a Terraform job.
+        
+        Args:
+            repo_url: Git repository URL
+            operation: Terraform operation (plan/apply/refresh)
+            env_vars: Environment variables for terraform
+            tfvars: Contents of terraform.tfvars file
+            working_dir: Subdirectory within repo to run terraform in
         
         Returns:
             Tuple of (success, output, state_file_path)
@@ -37,9 +56,17 @@ class TerraformExecutor:
             print(f"Cloning repository: {repo_url}")
             Repo.clone_from(repo_url, job_dir)
             
+            # Determine terraform working directory
+            tf_dir = job_dir
+            if working_dir:
+                tf_dir = os.path.join(job_dir, working_dir.lstrip('/'))
+                if not os.path.exists(tf_dir):
+                    return False, f"Working directory not found in repo: {working_dir}", None
+                print(f"Using working directory: {working_dir}")
+            
             # Write tfvars file if provided
             if tfvars:
-                tfvars_path = os.path.join(job_dir, 'terraform.tfvars')
+                tfvars_path = os.path.join(tf_dir, 'terraform.tfvars')
                 with open(tfvars_path, 'w') as f:
                     f.write(tfvars)
                 print(f"Wrote terraform.tfvars")
@@ -52,8 +79,8 @@ class TerraformExecutor:
             # Initialize Terraform
             print("Running terraform init...")
             init_result = self._run_terraform_command(
-                ['terraform', 'init', '-no-color'],
-                cwd=job_dir,
+                [self.terraform_bin, 'init', '-no-color'],
+                cwd=tf_dir,
                 env=env
             )
             
@@ -66,8 +93,8 @@ class TerraformExecutor:
             if operation == 'plan':
                 print("Running terraform plan...")
                 plan_result = self._run_terraform_command(
-                    ['terraform', 'plan', '-no-color'],
-                    cwd=job_dir,
+                    [self.terraform_bin, 'plan', '-no-color'],
+                    cwd=tf_dir,
                     env=env
                 )
                 output += f"=== Terraform Plan ===\n{plan_result[1]}\n"
@@ -76,8 +103,8 @@ class TerraformExecutor:
             elif operation == 'apply':
                 print("Running terraform apply...")
                 apply_result = self._run_terraform_command(
-                    ['terraform', 'apply', '-auto-approve', '-no-color'],
-                    cwd=job_dir,
+                    [self.terraform_bin, 'apply', '-auto-approve', '-no-color'],
+                    cwd=tf_dir,
                     env=env
                 )
                 output += f"=== Terraform Apply ===\n{apply_result[1]}\n"
@@ -86,8 +113,8 @@ class TerraformExecutor:
             elif operation == 'refresh':
                 print("Running terraform refresh...")
                 refresh_result = self._run_terraform_command(
-                    ['terraform', 'refresh', '-no-color'],
-                    cwd=job_dir,
+                    [self.terraform_bin, 'refresh', '-no-color'],
+                    cwd=tf_dir,
                     env=env
                 )
                 output += f"=== Terraform Refresh ===\n{refresh_result[1]}\n"
@@ -96,7 +123,7 @@ class TerraformExecutor:
                 return False, f"Unknown operation: {operation}", None
             
             # Get state file if it exists
-            state_file = os.path.join(job_dir, 'terraform.tfstate')
+            state_file = os.path.join(tf_dir, 'terraform.tfstate')
             state_path = state_file if os.path.exists(state_file) else None
             
             return success, output, state_path

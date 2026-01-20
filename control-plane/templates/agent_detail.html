@@ -115,7 +115,7 @@
                 </div>
                 <button 
                     hx-post="/api/agents/{{ agent.agent_id }}/unadopt"
-                    hx-headers='{"Content-Type": "application/json"}'
+                    hx-ext="json-enc"
                     hx-confirm="Are you sure you want to unadopt this runner?"
                     hx-on::after-request="window.location.reload()"
                     class="mt-3 px-3 py-1.5 bg-white border border-green-300 text-green-700 rounded-md hover:bg-green-50 text-sm">
@@ -135,7 +135,7 @@
                 </div>
                 <button 
                     hx-post="/api/agents/{{ agent.agent_id }}/adopt"
-                    hx-headers='{"Content-Type": "application/json"}'
+                    hx-ext="json-enc"
                     hx-on::after-request="window.location.reload()"
                     class="mt-3 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium">
                     ✓ Adopt Runner
@@ -147,48 +147,80 @@
             <div class="flex gap-3">
                 <button 
                     hx-post="/api/agents/{{ agent.agent_id }}/commands"
+                    hx-ext="json-enc"
                     hx-vals='{"command_type": "{% if agent.locked %}unlock{% else %}lock{% endif %}"}'
                     hx-swap="none"
-                    class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm">
-                    {% if agent.locked %}🔓 Unlock{% else %}🔒 Lock{% endif %}
+                    hx-on::after-request="window.location.reload()"
+                    class="px-4 py-2 {% if agent.locked %}bg-green-600 hover:bg-green-700{% else %}bg-gray-600 hover:bg-gray-700{% endif %} text-white rounded-md text-sm font-medium">
+                    {% if agent.locked %}🔓 Unlock Runner{% else %}🔒 Lock Runner{% endif %}
                 </button>
-                <button 
-                    hx-post="/api/agents/{{ agent.agent_id }}/commands"
-                    hx-vals='{"command_type": "{% if agent.paused %}unpause{% else %}pause{% endif %}"}'
-                    hx-swap="none"
-                    class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm">
-                    {% if agent.paused %}▶ Resume{% else %}⏸ Pause{% endif %}
-                </button>
-                <button 
-                    hx-post="/api/agents/{{ agent.agent_id }}/commands"
-                    hx-vals='{"command_type": "set_read_only", "params": {"value": {% if agent.read_only %}false{% else %}true{% endif %}}}'
-                    hx-swap="none"
-                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
-                    {% if agent.read_only %}✏ Read-Write{% else %}👁 Read-Only{% endif %}
-                </button>
-            </div>
-        </div>
-
-        <div class="px-6 py-5 border-t border-gray-200">
-            <div class="flex items-center justify-between mb-4">
-                <div>
-                    <h3 class="text-lg font-medium text-gray-900">Terraform Resources</h3>
-                    {% if agent.last_state_sync %}
-                    <p class="text-xs text-gray-500 mt-1">
-                        📸 Checkpoint snapshot from {{ agent.last_state_sync[:19] }}
-                    </p>
-                    {% endif %}
-                </div>
                 <button 
                     hx-post="/api/jobs"
+                    hx-ext="json-enc"
                     hx-vals='{"agent_id": "{{ agent.agent_id }}", "operation": "state_sync", "repo_url": "https://github.com/example/empty"}'
                     hx-swap="none"
+                    hx-on::after-request="window.location.reload()"
                     class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm font-medium inline-flex items-center">
                     <svg class="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"/>
                     </svg>
-                    Sync Checkpoint Now
+                    Sync State
                 </button>
+            </div>
+        </div>
+
+        <!-- Job Queue Section -->
+        <div class="px-6 py-5 border-t border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Job Queue</h3>
+            
+            <div class="space-y-3">
+                {% if jobs %}
+                    {% for job in jobs %}
+                    <div class="border rounded-lg p-4 {% if job.status == 'queued' %}border-yellow-200 bg-yellow-50{% elif job.status == 'in-progress' %}border-blue-200 bg-blue-50{% elif job.status == 'successful' %}border-green-200 bg-green-50{% else %}border-red-200 bg-red-50{% endif %}">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2">
+                                    <p class="font-medium text-sm">{{ job.operation|title }}</p>
+                                    <span class="px-2 py-0.5 text-xs rounded-full font-medium {% if job.status == 'queued' %}bg-yellow-100 text-yellow-800{% elif job.status == 'in-progress' %}bg-blue-100 text-blue-800{% elif job.status == 'successful' %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
+                                        {{ job.status }}
+                                    </span>
+                                </div>
+                                <p class="text-xs text-gray-600 mt-1 truncate">{{ job.repo_url }}</p>
+                                <div class="flex gap-4 mt-2 text-xs text-gray-500">
+                                    <span>ID: {{ job.job_id[:8] }}</span>
+                                    {% if job.created_at %}
+                                    <span>Created: {{ job.created_at[:19] }}</span>
+                                    {% endif %}
+                                    {% if job.tf_version %}
+                                    <span>TF: {{ job.tf_version }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <a href="/jobs/{{ job.job_id }}" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium ml-4">
+                                View →
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-8">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        <p class="mt-2 text-sm text-gray-500">No jobs in queue</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="px-6 py-5 border-t border-gray-200">
+            <div class="mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Terraform Resources</h3>
+                {% if agent.last_state_sync %}
+                <p class="text-xs text-gray-500 mt-1">
+                    📸 Checkpoint snapshot from {{ agent.last_state_sync[:19] }}
+                </p>
+                {% endif %}
             </div>
             
             {% if agent.terraform_resources %}

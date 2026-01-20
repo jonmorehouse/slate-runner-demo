@@ -1,6 +1,6 @@
 """Data models for the control plane."""
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from enum import Enum
 import json
@@ -8,10 +8,10 @@ import json
 
 class JobStatus(Enum):
     """Job execution status."""
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
+    QUEUED = "queued"              # Job created, waiting to be picked up
+    IN_PROGRESS = "in-progress"    # Job claimed and currently running
+    SUCCESSFUL = "successful"      # Job completed successfully
+    FAILED = "failed"              # Job failed
 
 
 class JobOperation(Enum):
@@ -47,6 +47,8 @@ class Agent:
     runner_state: Optional[Dict[str, Any]] = None
     terraform_resources: Optional[List[Dict[str, Any]]] = None
     last_state_sync: Optional[str] = None
+    last_job_completed: Optional[str] = None
+    requires_reconciliation: bool = False
     metadata: Optional[Dict[str, Any]] = None
     created_at: Optional[str] = None
     
@@ -65,7 +67,7 @@ class Agent:
             return False
         
         last_beat = datetime.fromisoformat(self.last_heartbeat)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         elapsed = (now - last_beat).total_seconds()
         
         return elapsed < timeout_seconds
@@ -78,9 +80,11 @@ class Job:
     agent_id: str
     repo_url: str
     operation: str
-    status: str = JobStatus.PENDING.value
+    status: str = JobStatus.QUEUED.value
     env_vars: Optional[Dict[str, str]] = None
     tfvars: Optional[str] = None
+    tf_version: Optional[str] = None
+    working_dir: Optional[str] = None
     output: Optional[str] = None
     error: Optional[str] = None
     state_path: Optional[str] = None

@@ -144,12 +144,9 @@ class RunnerLoops:
         
         while self.running:
             try:
-                # Skip if not allowed to execute
-                if not self.config.can_execute_jobs():
-                    if not self.config.adopted:
-                        print(f"[Jobs] ⏳ Waiting for adoption - runner not yet adopted by control plane")
-                    else:
-                        print(f"[Jobs] Skipping - runner state: locked={self.config.locked}, paused={self.config.paused}, read_only={self.config.read_only}")
+                # Check if runner is adopted before fetching jobs
+                if not self.config.adopted:
+                    print(f"[Jobs] ⏸️  Ignoring jobs because: runner not yet adopted by control plane")
                     time.sleep(self.config.poll_interval)
                     continue
                 
@@ -175,6 +172,13 @@ class RunnerLoops:
                 operation = job.get('operation')
                 
                 print(f"\n[Jobs] 📋 Found pending job: {job_id} (operation: {operation})")
+                
+                # Check if we can execute THIS SPECIFIC job based on its operation type
+                can_execute, reason = self.config.can_execute_jobs_with_reason(operation)
+                if not can_execute:
+                    print(f"[Jobs] ⏸️  Ignoring job {job_id} because: {reason}")
+                    time.sleep(self.config.poll_interval)
+                    continue
                 
                 # Claim the job atomically
                 try:
@@ -222,7 +226,9 @@ class RunnerLoops:
                     task_type=operation,
                     config={
                         'repo_url': job.get('repo_url'),
-                        'tfvars': job.get('tfvars')
+                        'tfvars': job.get('tfvars'),
+                        'tf_version': job.get('tf_version'),
+                        'working_dir': job.get('working_dir')
                     },
                     runner_id=self.config.runner_id,
                     workdir=f"/tmp/runner-{self.config.runner_id}",
@@ -275,6 +281,19 @@ class RunnerLoops:
                 if result.status == TaskStatus.SUCCESS:
                     self._update_job_completed(job_id, result.output, s3_state_path)
                     print(f"[Jobs] ✓ Job {job_id} completed\n")
+                    
+                    # Handle reconciliation flag based on operation type
+                    if job.get('operation') == 'state_sync':
+                        # State sync jobs clear the reconciliation requirement
+                        if self.config.requires_reconciliation:
+                            self.config.requires_reconciliation = False
+                            print(f"[Jobs] ✓ State reconciled - runner can accept new jobs")
+                    else:
+                        # Non-state_sync jobs require reconciliation after completion
+                        from datetime import datetime, timezone
+                        self.config.requires_reconciliation = True
+                        self.config.last_job_completed_at = datetime.now(timezone.utc).isoformat()
+                        print(f"[Jobs] ⚠️  State reconciliation required before next job")
                 else:
                     self._update_job_failed(job_id, result.error or result.output, s3_state_path)
                     print(f"[Jobs] ✗ Job {job_id} failed\n")

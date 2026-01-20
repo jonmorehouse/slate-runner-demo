@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Slate Runner Control Plane{% endblock %}</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/json-enc.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .status-online { color: #10b981; }
         .status-offline { color: #ef4444; }
-        .status-pending { color: #f59e0b; }
-        .status-running { color: #3b82f6; }
-        .status-completed { color: #10b981; }
+        .status-queued { color: #f59e0b; }
+        .status-in-progress { color: #3b82f6; }
+        .status-successful { color: #10b981; }
         .status-failed { color: #ef4444; }
     </style>
 </head>
