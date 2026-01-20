@@ -1,3 +1,4 @@
+{% from "macros/status.html" import agent_status_badge %}
 {% if agents %}
     {# Split agents into online and offline #}
     {% set online_agents = [] %}
@@ -33,9 +34,7 @@
                             <p class="text-sm text-gray-500 truncate">{{ agent.agent_id }}</p>
                         </div>
                         <div class="ml-4">
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                🟢 Online
-                            </span>
+                            {{ agent_status_badge(agent.status) }}
                         </div>
                     </div>
                     
@@ -104,9 +103,7 @@
                             <p class="text-sm text-gray-500 truncate">{{ agent.agent_id }}</p>
                         </div>
                         <div class="ml-4">
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                ⚫ Offline
-                            </span>
+                            {{ agent_status_badge(agent.status) }}
                         </div>
                     </div>
                     

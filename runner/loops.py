@@ -3,7 +3,7 @@ import time
 import sys
 import psutil
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from config import RunnerConfig
 from storage import RunnerS3Client
@@ -297,7 +297,6 @@ class RunnerLoops:
                             print(f"[Jobs] ✓ State reconciled - runner can accept new jobs")
                     else:
                         # Non-state_sync jobs require reconciliation after completion
-                        from datetime import datetime, timezone
                         self.config.requires_reconciliation = True
                         self.config.last_job_completed_at = datetime.now(timezone.utc).isoformat()
                         print(f"[Jobs] ⚠️  State reconciliation required before next job")
@@ -316,9 +315,9 @@ class RunnerLoops:
             time.sleep(self.config.poll_interval)
     
     def _update_job_completed(self, job_id: str, output: str, state_path: Optional[str] = None):
-        """Update job status to completed."""
+        """Update job status to successful."""
         update_payload = {
-            'status': 'completed',
+            'status': 'successful',
             'output': output[:1000],  # Store truncated version
             'state_path': state_path
         }

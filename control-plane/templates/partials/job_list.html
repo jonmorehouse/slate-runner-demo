@@ -1,3 +1,4 @@
+{% from "macros/status.html" import job_status_badge %}
 {% if jobs %}
 <div class="bg-white shadow rounded-lg overflow-hidden">
     <ul class="divide-y divide-gray-200">
@@ -7,23 +8,7 @@
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-3 mb-2">
                         <span class="font-mono text-sm text-gray-600">{{ job.job_id[:8] }}</span>
-                        {% if job.status == 'queued' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                            Queued
-                        </span>
-                        {% elif job.status == 'in-progress' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                            In Progress
-                        </span>
-                        {% elif job.status == 'successful' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                            Successful
-                        </span>
-                        {% else %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                            Failed
-                        </span>
-                        {% endif %}
+                        {{ job_status_badge(job.status) }}
                         <span class="text-sm font-medium text-gray-900">{{ job.operation }}</span>
                     </div>
                     <p class="text-sm text-gray-600 truncate">{{ job.repo_url }}</p>
