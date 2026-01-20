@@ -277,9 +277,16 @@ class RunnerLoops:
                         output_key,
                         'text/plain'
                     )
-                    print(f"[Jobs] ✓ Uploaded output to S3")
+                    print(f"[Jobs] ✓ Uploaded output to SlateDB")
                 except Exception as e:
                     print(f"[Jobs] ✗ Failed to upload output: {e}")
+                
+                # Flush WAL to ensure all writes are persisted to S3
+                try:
+                    self.s3_client.flush_wal()
+                    print(f"[Jobs] ✓ Flushed WAL to S3")
+                except Exception as e:
+                    print(f"[Jobs] ✗ Warning: Failed to flush WAL: {e}")
                 
                 # Update job status
                 if result.status == TaskStatus.SUCCESS:
@@ -288,6 +295,23 @@ class RunnerLoops:
                     
                     # Record job completion in runner's state store
                     self.state.record_job_completion(job_id, success=True)
+                    
+                    # Create checkpoint after successful job for recovery
+                    try:
+                        checkpoint = self.s3_client.create_checkpoint(
+                            job_id=job_id,
+                            checkpoint_type='post_job'
+                        )
+                        print(f"[Jobs] ✓ Created checkpoint: {checkpoint['id']}")
+                        
+                        # Record checkpoint in state
+                        self.state.record_checkpoint(
+                            checkpoint_id=checkpoint['id'],
+                            job_id=job_id,
+                            checkpoint_type='post_job'
+                        )
+                    except Exception as e:
+                        print(f"[Jobs] ✗ Warning: Failed to create checkpoint: {e}")
                     
                     # Handle reconciliation flag based on operation type
                     if job.get('operation') == 'state_sync':

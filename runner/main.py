@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from config import RunnerConfig
 from loops import RunnerLoops
 from state import RunnerStateManager
+from slate_storage import SlateDBStorage, CheckpointRecovery
+from storage import RunnerS3Client
 
 # Load environment variables
 load_dotenv()
@@ -20,9 +22,33 @@ class Runner:
     def __init__(self):
         """Initialize runner."""
         self.config = RunnerConfig.from_env()
-        # Use runner_name (human-readable) as the prefix for state storage
-        self.state = RunnerStateManager(self.config.runner_name)
+        
+        # Initialize SlateDB storage
+        print(f"[Runner] Initializing SlateDB...")
+        
+        self.slate_storage = SlateDBStorage(
+            runner_id=self.config.runner_id,
+            runner_name=self.config.runner_name,
+            bucket_name=self.config.bucket_name,
+            bucket_prefix=self.config.bucket_prefix,
+            tmp_dir=self.config.slatedb_tmp_dir,
+        )
+        
+        # Initialize state manager with SlateDB
+        self.state = RunnerStateManager(self.config.runner_id, self.slate_storage)
+        
+        # Initialize recovery utilities
+        self.recovery = CheckpointRecovery(self.slate_storage)
+        
+        # List available recovery points at startup
+        checkpoints = self.recovery.list_recovery_points()
+        print(f"[Runner] Found {len(checkpoints)} recovery checkpoints")
+        
+        # Initialize loops with SlateDB-backed storage
+        self.s3_client = RunnerS3Client(self.slate_storage, prefix=self.config.bucket_prefix)
         self.loops = RunnerLoops(self.config, self.state)
+        self.loops.s3_client = self.s3_client  # Override with SlateDB-backed client
+        
         self.threads = []
     
     def register(self) -> bool:
@@ -37,7 +63,7 @@ class Runner:
                 'metadata': {
                     'version': '1.0.0',
                     'platform': sys.platform,
-                    'state_bucket': os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner')
+                    'state_bucket': os.getenv('RUNNER_BUCKET', os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner'))
                 }
             }
             
@@ -113,6 +139,25 @@ class Runner:
         # Wait for threads to finish
         for thread in self.threads:
             thread.join(timeout=5.0)
+        
+        # Create final checkpoint before shutdown
+        try:
+            print("[Runner] Creating final checkpoint...")
+            checkpoint = self.slate_storage.create_checkpoint(
+                job_id=None,
+                checkpoint_type='shutdown'
+            )
+            print(f"[Runner] ✓ Final checkpoint created: {checkpoint['id']}")
+        except Exception as e:
+            print(f"[Runner] ✗ Failed to create final checkpoint: {e}")
+        
+        # Close SlateDB connection
+        try:
+            print("[Runner] Closing SlateDB connection...")
+            self.slate_storage.close()
+            print("[Runner] ✓ SlateDB closed")
+        except Exception as e:
+            print(f"[Runner] ✗ Failed to close SlateDB: {e}")
         
         print("[Runner] ✓ Shutdown complete")
 

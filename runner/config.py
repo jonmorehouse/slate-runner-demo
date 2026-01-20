@@ -18,6 +18,11 @@ class RunnerConfig:
     adopted: bool = False
     requires_reconciliation: bool = False
     last_job_completed_at: Optional[str] = None
+    slatedb_tmp_dir: str = '/tmp/slatedb'
+    bucket_name: str = 'slate-demo-runner'
+    bucket_prefix: str = ''
+    aws_region: str = 'us-west-2'
+    aws_endpoint_url: Optional[str] = None
     
     @classmethod
     def from_env(cls) -> 'RunnerConfig':
@@ -34,11 +39,20 @@ class RunnerConfig:
             runner_name = generate_runner_name()
             print(f"[Config] Generated runner name: {runner_name}")
         
+        # Get Runner-specific configuration
+        bucket_name = os.getenv('RUNNER_BUCKET', os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner'))
+        bucket_prefix = os.getenv('RUNNER_BUCKET_PREFIX', os.getenv('BUCKET_PREFIX', '')).rstrip('/')
+        
         return cls(
             runner_id=runner_id,
             runner_name=runner_name,
             control_plane_url=os.getenv('CONTROL_PLANE_URL', 'http://localhost:5005'),
-            poll_interval=int(os.getenv('POLL_INTERVAL', '5'))
+            poll_interval=int(os.getenv('POLL_INTERVAL', '5')),
+            slatedb_tmp_dir=os.getenv('SLATEDB_TMP_DIR', '/tmp/slatedb'),
+            bucket_name=bucket_name,
+            bucket_prefix=bucket_prefix,
+            aws_region=os.getenv('AWS_REGION', 'us-west-2'),
+            aws_endpoint_url=os.getenv('AWS_ENDPOINT_URL')
         )
     
     def apply_command(self, command_type: str, params: Optional[dict] = None):
