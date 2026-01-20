@@ -102,9 +102,13 @@ def agent_detail(agent_id):
         return "Agent not found", 404
     
     agent = Agent.from_dict(agent_data)
-    jobs = meta_storage.list_jobs(agent_id=agent_id)
+    all_jobs = meta_storage.list_jobs(agent_id=agent_id)
     
-    return render_template('agent_detail.html', agent=agent, jobs=jobs)
+    # Separate jobs into queued (active) and recent (all jobs for history)
+    queued_jobs = [j for j in all_jobs if j['status'] in [JobStatus.QUEUED.value, JobStatus.IN_PROGRESS.value]]
+    recent_jobs = all_jobs  # All jobs for the recent jobs section
+    
+    return render_template('agent_detail.html', agent=agent, jobs=queued_jobs, recent_jobs=recent_jobs)
 
 
 @app.route('/graph')
@@ -445,20 +449,27 @@ def create_job():
         if not data:
             return jsonify({'error': 'Request body must be JSON'}), 400
         
-        valid, error = validate_required_fields(data, ['agent_id', 'repo_url'])
-        if not valid:
-            print(f"[API] Validation error: {error}")
-            return jsonify({'error': error}), 400
-        
-        if not validate_repo_url(data['repo_url']):
-            return jsonify({'error': 'Invalid repository URL'}), 400
-        
         operation = data.get('operation', 'plan')
         if not validate_operation(operation):
             return jsonify({'error': 'Invalid operation type'}), 400
         
+        # For state_sync, repo_url is optional (not used)
+        if operation == 'state_sync':
+            valid, error = validate_required_fields(data, ['agent_id'])
+            if not valid:
+                print(f"[API] Validation error: {error}")
+                return jsonify({'error': error}), 400
+        else:
+            valid, error = validate_required_fields(data, ['agent_id', 'repo_url'])
+            if not valid:
+                print(f"[API] Validation error: {error}")
+                return jsonify({'error': error}), 400
+            
+            if not validate_repo_url(data['repo_url']):
+                return jsonify({'error': 'Invalid repository URL'}), 400
+        
         agent_id = data.get('agent_id')
-        repo_url = data.get('repo_url')
+        repo_url = data.get('repo_url', '')
         
         # Verify agent exists
         agent_data = meta_storage.get_agent(agent_id)
@@ -507,8 +518,18 @@ def list_jobs():
 def get_pending_jobs():
     """Get pending jobs for an agent."""
     agent_id = request.args.get('agent_id')
+    check_timestamp = request.args.get('check_timestamp')
+    
     if not agent_id:
         return jsonify({'error': 'agent_id is required'}), 400
+    
+    # Update agent's last_job_check_at timestamp
+    if check_timestamp:
+        agent_data = meta_storage.get_agent(agent_id)
+        if agent_data:
+            agent = Agent.from_dict(agent_data)
+            agent.last_job_check_at = check_timestamp
+            meta_storage.save_agent(agent.to_dict())
     
     jobs = meta_storage.list_jobs(agent_id=agent_id)
     pending = [j for j in jobs if j['status'] == JobStatus.QUEUED.value]

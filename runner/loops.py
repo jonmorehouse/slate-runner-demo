@@ -150,10 +150,14 @@ class RunnerLoops:
                     time.sleep(self.config.poll_interval)
                     continue
                 
-                # Fetch pending job
+                # Fetch pending job and send check timestamp
+                check_timestamp = datetime.now(timezone.utc).isoformat()
                 response = requests.get(
                     f"{self.config.control_plane_url}/api/jobs/pending",
-                    params={'agent_id': self.config.runner_id},
+                    params={
+                        'agent_id': self.config.runner_id,
+                        'check_timestamp': check_timestamp
+                    },
                     timeout=10
                 )
                 
@@ -282,6 +286,9 @@ class RunnerLoops:
                     self._update_job_completed(job_id, result.output, s3_state_path)
                     print(f"[Jobs] ✓ Job {job_id} completed\n")
                     
+                    # Record job completion in runner's state store
+                    self.state.record_job_completion(job_id, success=True)
+                    
                     # Handle reconciliation flag based on operation type
                     if job.get('operation') == 'state_sync':
                         # State sync jobs clear the reconciliation requirement
@@ -297,6 +304,9 @@ class RunnerLoops:
                 else:
                     self._update_job_failed(job_id, result.error or result.output, s3_state_path)
                     print(f"[Jobs] ✗ Job {job_id} failed\n")
+                    
+                    # Record job failure in runner's state store
+                    self.state.record_job_completion(job_id, success=False)
                 
             except Exception as e:
                 print(f"[Jobs] ✗ Error: {e}")

@@ -49,6 +49,7 @@ class Agent:
     last_state_sync: Optional[str] = None
     last_job_completed: Optional[str] = None
     requires_reconciliation: bool = False
+    last_job_check_at: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
     created_at: Optional[str] = None
     

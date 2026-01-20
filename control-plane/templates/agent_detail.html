@@ -44,6 +44,27 @@
                     {% endif %}
                 </div>
             </div>
+            
+            <!-- Job Polling Status -->
+            {% if agent.status == 'online' and agent.adopted %}
+            <div class="px-6 py-3 bg-blue-50 border-t border-blue-200">
+                <div class="flex items-center text-sm">
+                    <svg class="h-4 w-4 text-blue-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span class="text-gray-700">
+                        {% if agent.locked %}
+                            <span class="text-yellow-600 font-medium">🔒 Locked - Not checking for jobs</span>
+                        {% else %}
+                            <span class="text-gray-600">Last checked for jobs: </span>
+                            <span class="font-medium text-gray-900" id="last-checked-time">
+                                {{ agent.last_job_check_at[:19] if agent.last_job_check_at else 'Never' }}
+                            </span>
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            {% endif %}
         </div>
 
         <div class="px-6 py-5">
@@ -157,7 +178,7 @@
                 <button 
                     hx-post="/api/jobs"
                     hx-ext="json-enc"
-                    hx-vals='{"agent_id": "{{ agent.agent_id }}", "operation": "state_sync", "repo_url": "https://github.com/example/empty"}'
+                    hx-vals='{"agent_id": "{{ agent.agent_id }}", "operation": "state_sync"}'
                     hx-swap="none"
                     hx-on::after-request="window.location.reload()"
                     class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm font-medium inline-flex items-center">
@@ -287,9 +308,9 @@
 
         <div class="px-6 py-5 border-t border-gray-200">
             <h3 class="text-lg font-medium text-gray-900 mb-4">Recent Jobs</h3>
-            {% if jobs %}
+            {% if recent_jobs %}
             <div class="space-y-3">
-                {% for job in jobs[:10] %}
+                {% for job in recent_jobs[:10] %}
                 <div class="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition-colors">
                     <div class="flex items-center justify-between">
                         <div class="flex-1">
@@ -327,4 +348,11 @@
         </div>
     </div>
 </div>
+
+<script>
+// Auto-refresh page every 1 second to update last checked time
+setTimeout(function() {
+    window.location.reload();
+}, 1000);
+</script>
 {% endblock %}

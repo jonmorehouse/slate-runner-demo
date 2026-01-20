@@ -89,3 +89,32 @@ class RunnerStateManager:
     def get_state(self) -> Dict[str, Any]:
         """Get entire state."""
         return self._state.copy()
+    
+    def record_job_completion(self, job_id: str, success: bool = True) -> None:
+        """Record a completed job ID.
+        
+        Args:
+            job_id: The job ID to record
+            success: Whether the job succeeded or failed
+        """
+        if 'completed_jobs' not in self._state:
+            self._state['completed_jobs'] = []
+        
+        job_record = {
+            'job_id': job_id,
+            'completed_at': datetime.utcnow().isoformat(),
+            'success': success
+        }
+        
+        self._state['completed_jobs'].append(job_record)
+        
+        # Update counters
+        if success:
+            self.increment('jobs_completed')
+        else:
+            self.increment('jobs_failed')
+        
+        print(f"[StateManager] Recorded job {job_id} (success={success})")
+        
+        # Save state to S3
+        self.save()

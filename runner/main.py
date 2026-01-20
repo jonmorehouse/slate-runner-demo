@@ -20,7 +20,8 @@ class Runner:
     def __init__(self):
         """Initialize runner."""
         self.config = RunnerConfig.from_env()
-        self.state = RunnerStateManager(self.config.runner_id)
+        # Use runner_name (human-readable) as the prefix for state storage
+        self.state = RunnerStateManager(self.config.runner_name)
         self.loops = RunnerLoops(self.config, self.state)
         self.threads = []
     

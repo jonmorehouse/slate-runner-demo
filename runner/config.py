@@ -38,7 +38,7 @@ class RunnerConfig:
             runner_id=runner_id,
             runner_name=runner_name,
             control_plane_url=os.getenv('CONTROL_PLANE_URL', 'http://localhost:5005'),
-            poll_interval=int(os.getenv('POLL_INTERVAL', '60'))
+            poll_interval=int(os.getenv('POLL_INTERVAL', '5'))
         )
     
     def apply_command(self, command_type: str, params: Optional[dict] = None):
