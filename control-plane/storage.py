@@ -345,6 +345,7 @@ class RunnerStorage:
             job.started_at = datetime.now(timezone.utc).isoformat()
         elif to_status in [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value]:
             job.completed_at = datetime.now(timezone.utc).isoformat()
+            job.finished_at = datetime.now(timezone.utc).isoformat()
         
         # Apply additional updates
         for key, value in updates.items():

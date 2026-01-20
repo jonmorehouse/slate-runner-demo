@@ -316,10 +316,12 @@ class RunnerLoops:
     
     def _update_job_completed(self, job_id: str, output: str, state_path: Optional[str] = None):
         """Update job status to successful."""
+        now = datetime.now(timezone.utc).isoformat()
         update_payload = {
             'status': 'successful',
             'output': output[:1000],  # Store truncated version
-            'state_path': state_path
+            'state_path': state_path,
+            'finished_at': now
         }
         
         try:
@@ -337,10 +339,12 @@ class RunnerLoops:
     
     def _update_job_failed(self, job_id: str, error: str, state_path: Optional[str] = None):
         """Update job status to failed."""
+        now = datetime.now(timezone.utc).isoformat()
         update_payload = {
             'status': 'failed',
             'error': error[:500],
-            'state_path': state_path
+            'state_path': state_path,
+            'finished_at': now
         }
         
         try:

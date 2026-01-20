@@ -96,15 +96,26 @@ class Job:
     created_at: Optional[str] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    
+    @property
+    def is_finished(self) -> bool:
+        """Check if job has finished (successful or failed)."""
+        return self.status in [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value]
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
-        return asdict(self)
+        data = asdict(self)
+        data['finished'] = self.is_finished
+        return data
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Job':
         """Create from dictionary."""
-        return cls(**data)
+        # Remove the computed 'finished' field if present in data
+        data_copy = data.copy()
+        data_copy.pop('finished', None)
+        return cls(**data_copy)
 
 
 @dataclass

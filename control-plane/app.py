@@ -604,7 +604,14 @@ def update_job(job_id):
         if data['status'] == JobStatus.IN_PROGRESS.value and not job.started_at:
             job.started_at = datetime.now(timezone.utc).isoformat()
         elif data['status'] in [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value]:
-            job.completed_at = datetime.now(timezone.utc).isoformat()
+            if not job.completed_at:
+                job.completed_at = datetime.now(timezone.utc).isoformat()
+            if not job.finished_at:
+                job.finished_at = datetime.now(timezone.utc).isoformat()
+    
+    # Allow explicit finished_at to be set via API
+    if 'finished_at' in data:
+        job.finished_at = data['finished_at']
     
     if 'output' in data:
         job.output = data['output']
