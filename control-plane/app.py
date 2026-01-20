@@ -87,7 +87,7 @@ def index():
             agent.status = AgentStatus.OFFLINE.value
             # Track disconnection time if transitioning from online to offline
             if was_online:
-                agent.disconnected_at = datetime.now(timezone.utc).isoformat()
+                agent.disconnected_at = datetime.utcnow().isoformat()
         
         meta_storage.save_agent(agent.to_dict())
     
@@ -122,7 +122,7 @@ def graph_view():
         else:
             agent.status = AgentStatus.OFFLINE.value
             if was_online:
-                agent.disconnected_at = datetime.now(timezone.utc).isoformat()
+                agent.disconnected_at = datetime.utcnow().isoformat()
         
         meta_storage.save_agent(agent.to_dict())
     
@@ -175,7 +175,7 @@ def agents_partial():
             agent.status = AgentStatus.OFFLINE.value
             # Track disconnection time if transitioning from online to offline
             if was_online:
-                agent.disconnected_at = datetime.now(timezone.utc).isoformat()
+                agent.disconnected_at = datetime.utcnow().isoformat()
         
         meta_storage.save_agent(agent.to_dict())
     
@@ -215,10 +215,10 @@ def register_agent():
         # Track reconnection if it was offline
         was_offline = agent.status == AgentStatus.OFFLINE.value
         if was_offline:
-            agent.connected_at = datetime.now(timezone.utc).isoformat()
+            agent.connected_at = datetime.utcnow().isoformat()
             agent.connection_count = agent.connection_count + 1
         
-        agent.last_heartbeat = datetime.now(timezone.utc).isoformat()
+        agent.last_heartbeat = datetime.utcnow().isoformat()
         agent.status = AgentStatus.ONLINE.value
         agent.name = data.get('name', agent.name)
         if data.get('metadata'):
@@ -229,10 +229,10 @@ def register_agent():
             agent_id=agent_id,
             name=data.get('name', agent_id),
             status=AgentStatus.ONLINE.value,
-            last_heartbeat=datetime.now(timezone.utc).isoformat(),
+            last_heartbeat=datetime.utcnow().isoformat(),
             metadata=data.get('metadata'),
-            created_at=datetime.now(timezone.utc).isoformat(),
-            connected_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.utcnow().isoformat(),
+            connected_at=datetime.utcnow().isoformat(),
             connection_count=1
         )
     
@@ -306,6 +306,24 @@ def unadopt_agent(agent_id):
     return jsonify(agent.to_dict()), 200
 
 
+@app.route('/api/agents/<agent_id>/lock', methods=['POST'])
+def lock_agent(agent_id):
+    """Lock or unlock a runner agent."""
+    agent_data = meta_storage.get_agent(agent_id)
+    if not agent_data:
+        return jsonify({'error': 'Agent not found'}), 404
+    
+    data = request.json or {}
+    lock_state = data.get('locked', True)  # Default to locking
+    
+    agent = Agent.from_dict(agent_data)
+    agent.locked = lock_state
+    
+    meta_storage.save_agent(agent.to_dict())
+    
+    return jsonify(agent.to_dict()), 200
+
+
 @app.route('/api/agents/<agent_id>/state', methods=['POST'])
 def upload_agent_state(agent_id):
     """Receive and store runner state from a state sync job."""
@@ -359,7 +377,7 @@ def upload_agent_state(agent_id):
                 })
     
     agent.terraform_resources = resources
-    agent.last_state_sync = datetime.now(timezone.utc).isoformat()
+    agent.last_state_sync = datetime.utcnow().isoformat()
     
     meta_storage.save_agent(agent.to_dict())
     
@@ -392,14 +410,14 @@ def submit_health_check():
     agent_data = meta_storage.get_agent(agent_id)
     if agent_data:
         agent = Agent.from_dict(agent_data)
-        agent.last_heartbeat = datetime.now(timezone.utc).isoformat()
+        agent.last_heartbeat = datetime.utcnow().isoformat()
         agent.status = AgentStatus.ONLINE.value
         meta_storage.save_agent(agent.to_dict())
     
     # Save health check
     health_check = HealthCheck(
         agent_id=agent_id,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.utcnow().isoformat(),
         cpu_percent=data.get('cpu_percent'),
         memory_percent=data.get('memory_percent'),
         disk_percent=data.get('disk_percent'),
@@ -562,10 +580,10 @@ def update_job(job_id):
     # Update fields
     if 'status' in data:
         job.status = data['status']
-        if data['status'] == JobStatus.IN_PROGRESS.value and not job.started_at:
-            job.started_at = datetime.now(timezone.utc).isoformat()
-        elif data['status'] in [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value]:
-            job.completed_at = datetime.now(timezone.utc).isoformat()
+        if data['status'] == JobStatus.RUNNING.value and not job.started_at:
+            job.started_at = datetime.utcnow().isoformat()
+        elif data['status'] in [JobStatus.COMPLETED.value, JobStatus.FAILED.value]:
+            job.completed_at = datetime.utcnow().isoformat()
     
     if 'output' in data:
         job.output = data['output']
@@ -603,7 +621,7 @@ def send_agent_command(agent_id):
         agent_id=agent_id,
         command_type=command_type,
         params=data.get('params'),
-        created_at=datetime.now(timezone.utc).isoformat()
+        created_at=datetime.utcnow().isoformat()
     )
     
     meta_storage.save_command(command.to_dict())
@@ -622,7 +640,7 @@ def update_command(command_id):
     
     if 'executed' in data:
         command.executed = data['executed']
-        command.executed_at = datetime.now(timezone.utc).isoformat()
+        command.executed_at = datetime.utcnow().isoformat()
     
     meta_storage.save_command(command.to_dict())
     return jsonify(command.to_dict())

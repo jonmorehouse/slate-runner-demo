@@ -146,9 +146,9 @@
             <h3 class="text-lg font-medium text-gray-900 mb-4 mt-6">Agent Controls</h3>
             <div class="flex gap-3">
                 <button 
-                    hx-post="/api/agents/{{ agent.agent_id }}/commands"
+                    hx-post="/api/agents/{{ agent.agent_id }}/lock"
                     hx-ext="json-enc"
-                    hx-vals='{"command_type": "{% if agent.locked %}unlock{% else %}lock{% endif %}"}'
+                    hx-vals='{"locked": {% if agent.locked %}false{% else %}true{% endif %}}'
                     hx-swap="none"
                     hx-on::after-request="window.location.reload()"
                     class="px-4 py-2 {% if agent.locked %}bg-green-600 hover:bg-green-700{% else %}bg-gray-600 hover:bg-gray-700{% endif %} text-white rounded-md text-sm font-medium">

@@ -67,6 +67,10 @@ class Agent:
             return False
         
         last_beat = datetime.fromisoformat(self.last_heartbeat)
+        # Ensure last_beat is timezone-aware
+        if last_beat.tzinfo is None:
+            last_beat = last_beat.replace(tzinfo=timezone.utc)
+        
         now = datetime.now(timezone.utc)
         elapsed = (now - last_beat).total_seconds()
         
