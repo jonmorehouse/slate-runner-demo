@@ -141,6 +141,36 @@ class MetaStorage:
         jobs.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         return jobs
     
+    def claim_job(self, job_id: str, agent_id: str) -> tuple:
+        """Atomically claim a pending job.
+        
+        Args:
+            job_id: Job ID to claim
+            agent_id: Agent claiming the job
+            
+        Returns:
+            (success, error_message)
+        """
+        from models import Job, JobStatus
+        
+        job_data = self.get_job(job_id)
+        
+        if not job_data:
+            return False, "Job not found"
+        
+        current_status = job_data.get('status')
+        if current_status != JobStatus.QUEUED.value:
+            return False, f"Job status is {current_status}, expected queued"
+        
+        # Update job to in-progress
+        job = Job.from_dict(job_data)
+        job.status = JobStatus.IN_PROGRESS.value
+        job.started_at = datetime.now(timezone.utc).isoformat()
+        job.agent_id = agent_id
+        
+        self.save_job(job.to_dict())
+        return True, ""
+    
     # Health check operations
     def save_health_check(self, health_dict: Dict[str, Any]) -> None:
         """Save a health check."""
@@ -258,9 +288,9 @@ class RunnerStorage:
         
         current_status = job_data.get('status')
         if current_status != JobStatus.QUEUED.value:
-            return False, f"Job status is {current_status}, expected pending"
+            return False, f"Job status is {current_status}, expected queued"
         
-        # Update job to running
+        # Update job to in-progress
         job = Job.from_dict(job_data)
         job.status = JobStatus.IN_PROGRESS.value
         job.started_at = datetime.now(timezone.utc).isoformat()

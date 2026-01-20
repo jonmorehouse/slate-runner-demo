@@ -580,10 +580,10 @@ def update_job(job_id):
     # Update fields
     if 'status' in data:
         job.status = data['status']
-        if data['status'] == JobStatus.RUNNING.value and not job.started_at:
-            job.started_at = datetime.utcnow().isoformat()
-        elif data['status'] in [JobStatus.COMPLETED.value, JobStatus.FAILED.value]:
-            job.completed_at = datetime.utcnow().isoformat()
+        if data['status'] == JobStatus.IN_PROGRESS.value and not job.started_at:
+            job.started_at = datetime.now(timezone.utc).isoformat()
+        elif data['status'] in [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value]:
+            job.completed_at = datetime.now(timezone.utc).isoformat()
     
     if 'output' in data:
         job.output = data['output']
