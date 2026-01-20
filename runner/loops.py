@@ -254,10 +254,7 @@ class RunnerLoops:
                 print(f"[Jobs] Executing task: {operation}")
                 result = task.execute(context)
                 
-                # Cleanup
-                task.cleanup(context)
-                
-                # Upload artifacts (state files, etc.)
+                # Upload artifacts (state files, etc.) BEFORE cleanup
                 s3_state_path = None
                 if result.artifacts and 'state_path' in result.artifacts:
                     try:
@@ -268,6 +265,9 @@ class RunnerLoops:
                         print(f"[Jobs] ✓ Uploaded state to S3: {s3_key}")
                     except Exception as e:
                         print(f"[Jobs] ✗ Failed to upload state: {e}")
+                
+                # Cleanup AFTER uploading artifacts
+                task.cleanup(context)
                 
                 # Upload output
                 try:
