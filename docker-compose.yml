@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  control-plane:
+    build:
+      context: ./control-plane
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - SLATE_META_BUCKET=${SLATE_META_BUCKET}
+      - SLATE_RUNNER_BUCKET=${SLATE_RUNNER_BUCKET}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
+      - AWS_REGION=${AWS_REGION}
+      - FLASK_ENV=development
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - ./control-plane:/app
+    restart: unless-stopped
+    networks:
+      - slate-network
+
+  runner-1:
+    build:
+      context: ./runner
+      dockerfile: Dockerfile
+    environment:
+      - RUNNER_ID=runner-001
+      - RUNNER_NAME=Runner 1
+      - CONTROL_PLANE_URL=http://control-plane:5000
+      - POLL_INTERVAL=5
+      - SLATE_RUNNER_BUCKET=${SLATE_RUNNER_BUCKET}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
+      - AWS_REGION=${AWS_REGION}
+    volumes:
+      - ./runner:/app
+    depends_on:
+      - control-plane
+    restart: unless-stopped
+    networks:
+      - slate-network
+
+  runner-2:
+    build:
+      context: ./runner
+      dockerfile: Dockerfile
+    environment:
+      - RUNNER_ID=runner-002
+      - RUNNER_NAME=Runner 2
+      - CONTROL_PLANE_URL=http://control-plane:5000
+      - POLL_INTERVAL=5
+      - SLATE_RUNNER_BUCKET=${SLATE_RUNNER_BUCKET}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
+      - AWS_REGION=${AWS_REGION}
+    volumes:
+      - ./runner:/app
+    depends_on:
+      - control-plane
+    restart: unless-stopped
+    networks:
+      - slate-network
+
+networks:
+  slate-network:
+    driver: bridge

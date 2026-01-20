@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Jobs - Slate Runner{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <div class="sm:flex sm:items-center sm:justify-between mb-6">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900">Jobs</h2>
+            <p class="mt-1 text-sm text-gray-500">Manage Terraform jobs across all agents</p>
+        </div>
+        <button 
+            onclick="document.getElementById('job-form').classList.toggle('hidden')"
+            class="mt-4 sm:mt-0 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+            + Create Job
+        </button>
+    </div>
+
+    <!-- Job Creation Form -->
+    <div id="job-form" class="hidden mb-6 bg-white shadow rounded-lg p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Create New Job</h3>
+        <form hx-post="/api/jobs" hx-target="#job-list" hx-swap="beforebegin">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Agent</label>
+                    <select name="agent_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border">
+                        {% for agent in agents %}
+                        <option value="{{ agent.agent_id }}">{{ agent.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Repository URL</label>
+                    <input 
+                        type="url" 
+                        name="repo_url" 
+                        required 
+                        placeholder="https://github.com/user/terraform-repo"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Operation</label>
+                    <select name="operation" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border">
+                        <option value="plan">Plan</option>
+                        <option value="apply">Apply</option>
+                        <option value="refresh">Refresh</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Environment Variables (JSON)</label>
+                    <textarea 
+                        name="env_vars" 
+                        rows="4" 
+                        placeholder='{"AWS_REGION": "us-west-2", "ENV": "production"}'
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border font-mono text-sm"></textarea>
+                    <p class="mt-1 text-xs text-gray-500">Optional: JSON object of environment variables</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Terraform Variables (.tfvars content)</label>
+                    <textarea 
+                        name="tfvars" 
+                        rows="6" 
+                        placeholder='instance_type = "t3.micro"
+region = "us-west-2"'
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border font-mono text-sm"></textarea>
+                    <p class="mt-1 text-xs text-gray-500">Optional: Contents of terraform.tfvars file</p>
+                </div>
+
+                <div class="flex gap-3">
+                    <button 
+                        type="submit" 
+                        class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+                        Create Job
+                    </button>
+                    <button 
+                        type="button"
+                        onclick="document.getElementById('job-form').classList.add('hidden')"
+                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Job List -->
+    <div id="job-list" 
+         hx-get="/partials/jobs" 
+         hx-trigger="every 3s" 
+         hx-swap="innerHTML">
+        {% include 'partials/job_list.html' %}
+    </div>
+</div>
+
+<script>
+// Parse JSON for env_vars before submitting
+document.querySelector('form').addEventListener('htmx:configRequest', function(evt) {
+    const envVarsInput = evt.target.querySelector('[name="env_vars"]');
+    if (envVarsInput && envVarsInput.value.trim()) {
+        try {
+            evt.detail.parameters.env_vars = JSON.parse(envVarsInput.value);
+        } catch (e) {
+            console.error('Invalid JSON in env_vars');
+        }
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Runner Graph - Control Plane{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Runner Network Graph</h2>
+        <div>
+            <a href="/" class="btn btn-secondary">← List View</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div id="graph-container" style="width: 100%; height: 800px; background: #f8f9fa;"></div>
+        </div>
+    </div>
+
+    <div class="mt-3">
+        <div class="card">
+            <div class="card-body">
+                <h5>Legend</h5>
+                <div class="row">
+                    <div class="col-md-3">
+                        <span class="badge bg-success">●</span> Online
+                        <span class="badge bg-secondary ms-2">●</span> Offline
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge bg-primary">●</span> Control Plane
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge bg-warning">🔒</span> Locked
+                        <span class="badge bg-info ms-2">✓</span> Adopted
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Click nodes to view details</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .node {
+        cursor: pointer;
+        stroke: #fff;
+        stroke-width: 2px;
+    }
+    
+    .node:hover {
+        stroke-width: 3px;
+        filter: brightness(1.1);
+    }
+    
+    .link {
+        stroke: #999;
+        stroke-opacity: 0.6;
+        stroke-width: 2px;
+    }
+    
+    .node-label {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 12px;
+        pointer-events: none;
+        text-anchor: middle;
+    }
+    
+    .node-status {
+        font-size: 10px;
+        pointer-events: none;
+    }
+</style>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+    // Graph data from server
+    const agents = {{ agents | tojson }};
+    
+    // Create nodes and links
+    const nodes = [
+        {
+            id: 'control-plane',
+            name: 'Control Plane',
+            type: 'control-plane',
+            color: '#0d6efd'
+        }
+    ];
+    
+    const links = [];
+    
+    // Add agent nodes
+    agents.forEach(agent => {
+        const isOnline = agent.status === 'online';
+        const isLocked = agent.locked || false;
+        const isAdopted = agent.adopted || false;
+        
+        nodes.push({
+            id: agent.agent_id,
+            name: agent.name,
+            type: 'agent',
+            status: agent.status,
+            locked: isLocked,
+            adopted: isAdopted,
+            color: isOnline ? '#198754' : '#6c757d',
+            agent_id: agent.agent_id
+        });
+        
+        // Connect to control plane
+        links.push({
+            source: 'control-plane',
+            target: agent.agent_id,
+            strength: isOnline ? 1 : 0.3
+        });
+    });
+    
+    // Set up SVG
+    const container = document.getElementById('graph-container');
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    
+    const svg = d3.select('#graph-container')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height);
+    
+    // Create force simulation
+    const simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(links)
+            .id(d => d.id)
+            .distance(d => d.strength === 1 ? 150 : 200))
+        .force('charge', d3.forceManyBody().strength(-400))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(50));
+    
+    // Create links
+    const link = svg.append('g')
+        .selectAll('line')
+        .data(links)
+        .join('line')
+        .attr('class', 'link')
+        .style('stroke-opacity', d => d.strength === 1 ? 0.6 : 0.3);
+    
+    // Create node groups
+    const node = svg.append('g')
+        .selectAll('g')
+        .data(nodes)
+        .join('g')
+        .call(d3.drag()
+            .on('start', dragstarted)
+            .on('drag', dragged)
+            .on('end', dragended));
+    
+    // Add circles for nodes
+    node.append('circle')
+        .attr('class', 'node')
+        .attr('r', d => d.type === 'control-plane' ? 30 : 20)
+        .attr('fill', d => d.color)
+        .on('click', (event, d) => {
+            if (d.type === 'agent') {
+                window.location.href = `/agents/${d.agent_id}`;
+            }
+        });
+    
+    // Add labels
+    node.append('text')
+        .attr('class', 'node-label')
+        .attr('dy', d => d.type === 'control-plane' ? 45 : 35)
+        .text(d => d.name);
+    
+    // Add status badges
+    node.filter(d => d.type === 'agent')
+        .append('text')
+        .attr('class', 'node-status')
+        .attr('dy', -25)
+        .attr('text-anchor', 'middle')
+        .text(d => {
+            let badges = '';
+            if (d.locked) badges += '🔒 ';
+            if (d.adopted) badges += '✓ ';
+            return badges.trim();
+        });
+    
+    // Update positions on simulation tick
+    simulation.on('tick', () => {
+        link
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+        
+        node.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+    
+    // Drag functions
+    function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+    }
+    
+    function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+    }
+    
+    function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+    }
+    
+    // Auto-refresh every 10 seconds
+    setInterval(() => {
+        window.location.reload();
+    }, 10000);
+</script>
+{% endblock %}

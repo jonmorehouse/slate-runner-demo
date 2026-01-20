@@ -1,0 +1,13 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfstate.*
+*.tfplan
+
+# Generated files
+output.txt
+
+# OS
+.DS_Store

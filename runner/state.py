@@ -1,0 +1,91 @@
+"""Runner state management using S3."""
+import json
+import os
+from typing import Optional, Dict, Any
+from datetime import datetime
+import boto3
+from botocore.exceptions import ClientError
+
+
+class RunnerStateManager:
+    """Manages runner state persistence to S3."""
+    
+    def __init__(self, runner_id: str):
+        """Initialize state manager.
+        
+        Args:
+            runner_id: Unique runner identifier
+        """
+        self.runner_id = runner_id
+        self.bucket_name = os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner')
+        self.prefix = os.getenv('BUCKET_PREFIX', '').rstrip('/') + '/' if os.getenv('BUCKET_PREFIX', '') else ''
+        self.state_key = f"{self.prefix}runner-state/{runner_id}/state.json"
+        
+        self.s3_client = boto3.client(
+            's3',
+            endpoint_url=os.getenv('AWS_ENDPOINT_URL'),
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            region_name=os.getenv('AWS_REGION', 'auto')
+        )
+        
+        print(f"[StateManager] Using bucket={self.bucket_name}, prefix={self.prefix}, state_key={self.state_key}")
+        self._state = self._load_state()
+    
+    def _load_state(self) -> Dict[str, Any]:
+        """Load state from S3."""
+        try:
+            response = self.s3_client.get_object(
+                Bucket=self.bucket_name,
+                Key=self.state_key
+            )
+            data = response['Body'].read().decode('utf-8')
+            return json.loads(data)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                # Initialize new state
+                return {
+                    'runner_id': self.runner_id,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'last_sync': None,
+                    'jobs_completed': 0,
+                    'jobs_failed': 0,
+                    'config': {},
+                    'metadata': {}
+                }
+            raise
+    
+    def save(self) -> None:
+        """Save current state to S3."""
+        self._state['last_sync'] = datetime.utcnow().isoformat()
+        
+        json_data = json.dumps(self._state, indent=2)
+        self.s3_client.put_object(
+            Bucket=self.bucket_name,
+            Key=self.state_key,
+            Body=json_data.encode('utf-8'),
+            ContentType='application/json'
+        )
+    
+    def get(self, key: str, default=None) -> Any:
+        """Get a value from state."""
+        return self._state.get(key, default)
+    
+    def set(self, key: str, value: Any) -> None:
+        """Set a value in state."""
+        self._state[key] = value
+    
+    def increment(self, key: str, amount: int = 1) -> None:
+        """Increment a numeric value."""
+        current = self._state.get(key, 0)
+        self._state[key] = current + amount
+    
+    def update_metadata(self, metadata: Dict[str, Any]) -> None:
+        """Update metadata."""
+        if 'metadata' not in self._state:
+            self._state['metadata'] = {}
+        self._state['metadata'].update(metadata)
+    
+    def get_state(self) -> Dict[str, Any]:
+        """Get entire state."""
+        return self._state.copy()

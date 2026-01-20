@@ -1,0 +1,5 @@
+# Example terraform.tfvars file for demo
+
+environment    = "production"
+message        = "Hello from Slate Runner Demo!"
+instance_count = 3

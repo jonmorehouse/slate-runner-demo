@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}{{ agent.name }} - Slate Runner{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <div class="mb-6">
+        <a href="/" class="text-sm text-indigo-600 hover:text-indigo-800">&larr; Back to agents</a>
+    </div>
+
+    <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-5 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <div class="flex-1">
+                    <h2 class="text-2xl font-bold text-gray-900">{{ agent.name }}</h2>
+                    <p class="text-sm text-gray-500 mt-1">{{ agent.agent_id }}</p>
+                    
+                    {% if agent.last_state_sync %}
+                    <div class="mt-2 flex items-center text-sm">
+                        <svg class="h-4 w-4 text-indigo-500 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"/>
+                        </svg>
+                        <span class="text-gray-600">Last checkpoint: </span>
+                        <span class="ml-1 font-medium text-gray-900" id="last-sync-time">{{ agent.last_state_sync[:19] if agent.last_state_sync else 'Never' }}</span>
+                    </div>
+                    {% else %}
+                    <div class="mt-2 flex items-center text-sm text-yellow-600">
+                        <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="font-medium">No checkpoint data available - Run a state_sync job</span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="flex flex-col items-end gap-2">
+                    {% if agent.status == 'online' %}
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                        Online
+                    </span>
+                    {% else %}
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                        Offline
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="px-6 py-5">
+            {% if agent.last_state_sync %}
+            {# Check if checkpoint is stale (older than 1 hour = 3600 seconds) #}
+            {% set checkpoint_age_hours = ((agent.last_state_sync | length > 0) and ((2024 - agent.last_state_sync[:4]|int) * 365 * 24)) or 0 %}
+            {# Simple staleness check - if last_state_sync exists but no runner_state, show warning #}
+            {% if not agent.runner_state or agent.terraform_resources|length == 0 %}
+            <div class="mb-4 bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-yellow-700">
+                            <strong class="font-medium">Checkpoint may be stale.</strong>
+                            This data represents a snapshot from {{ agent.last_state_sync[:19] }}. The runner's current state may have changed. Trigger a sync to get the latest checkpoint.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+            
+            {% if agent.runner_state %}
+            <div class="mb-6 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                <h3 class="text-sm font-medium text-indigo-900 mb-3 flex items-center">
+                    <svg class="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z"/>
+                        <path d="M3 7v3c0 1.657 3.134 3 7 3s7-1.343 7-3V7c0 1.657-3.134 3-7 3S3 8.657 3 7z"/>
+                        <path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z"/>
+                    </svg>
+                    Runner State (Checkpointed)
+                </h3>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                        <p class="text-indigo-600 font-medium">Jobs Completed</p>
+                        <p class="text-2xl font-bold text-indigo-900">{{ agent.runner_state.jobs_completed or 0 }}</p>
+                    </div>
+                    <div>
+                        <p class="text-indigo-600 font-medium">Jobs Failed</p>
+                        <p class="text-2xl font-bold text-indigo-900">{{ agent.runner_state.jobs_failed or 0 }}</p>
+                    </div>
+                    <div>
+                        <p class="text-indigo-600 font-medium">Sync Status</p>
+                        {% if agent.last_state_sync %}
+                        <p class="text-sm font-medium text-green-700 mt-2">✓ Current</p>
+                        {% else %}
+                        <p class="text-sm font-medium text-yellow-700 mt-2">⚠ Not Synced</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Adoption Status</h3>
+            {% if agent.adopted %}
+            <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                <div class="flex items-center">
+                    <svg class="h-5 w-5 text-green-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                    </svg>
+                    <div>
+                        <p class="text-sm font-medium text-green-800">Runner Adopted</p>
+                        <p class="text-xs text-green-600 mt-1">Adopted at {{ agent.adopted_at[:19] if agent.adopted_at else 'Unknown' }}</p>
+                    </div>
+                </div>
+                <button 
+                    hx-post="/api/agents/{{ agent.agent_id }}/unadopt"
+                    hx-headers='{"Content-Type": "application/json"}'
+                    hx-confirm="Are you sure you want to unadopt this runner?"
+                    hx-on::after-request="window.location.reload()"
+                    class="mt-3 px-3 py-1.5 bg-white border border-green-300 text-green-700 rounded-md hover:bg-green-50 text-sm">
+                    Unadopt Runner
+                </button>
+            </div>
+            {% else %}
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                <div class="flex items-center">
+                    <svg class="h-5 w-5 text-yellow-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+                    </svg>
+                    <div>
+                        <p class="text-sm font-medium text-yellow-800">Waiting for Adoption</p>
+                        <p class="text-xs text-yellow-600 mt-1">This runner cannot execute jobs until adopted</p>
+                    </div>
+                </div>
+                <button 
+                    hx-post="/api/agents/{{ agent.agent_id }}/adopt"
+                    hx-headers='{"Content-Type": "application/json"}'
+                    hx-on::after-request="window.location.reload()"
+                    class="mt-3 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium">
+                    ✓ Adopt Runner
+                </button>
+            </div>
+            {% endif %}
+            
+            <h3 class="text-lg font-medium text-gray-900 mb-4 mt-6">Agent Controls</h3>
+            <div class="flex gap-3">
+                <button 
+                    hx-post="/api/agents/{{ agent.agent_id }}/commands"
+                    hx-vals='{"command_type": "{% if agent.locked %}unlock{% else %}lock{% endif %}"}'
+                    hx-swap="none"
+                    class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm">
+                    {% if agent.locked %}🔓 Unlock{% else %}🔒 Lock{% endif %}
+                </button>
+                <button 
+                    hx-post="/api/agents/{{ agent.agent_id }}/commands"
+                    hx-vals='{"command_type": "{% if agent.paused %}unpause{% else %}pause{% endif %}"}'
+                    hx-swap="none"
+                    class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm">
+                    {% if agent.paused %}▶ Resume{% else %}⏸ Pause{% endif %}
+                </button>
+                <button 
+                    hx-post="/api/agents/{{ agent.agent_id }}/commands"
+                    hx-vals='{"command_type": "set_read_only", "params": {"value": {% if agent.read_only %}false{% else %}true{% endif %}}}'
+                    hx-swap="none"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+                    {% if agent.read_only %}✏ Read-Write{% else %}👁 Read-Only{% endif %}
+                </button>
+            </div>
+        </div>
+
+        <div class="px-6 py-5 border-t border-gray-200">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-lg font-medium text-gray-900">Terraform Resources</h3>
+                    {% if agent.last_state_sync %}
+                    <p class="text-xs text-gray-500 mt-1">
+                        📸 Checkpoint snapshot from {{ agent.last_state_sync[:19] }}
+                    </p>
+                    {% endif %}
+                </div>
+                <button 
+                    hx-post="/api/jobs"
+                    hx-vals='{"agent_id": "{{ agent.agent_id }}", "operation": "state_sync", "repo_url": "https://github.com/example/empty"}'
+                    hx-swap="none"
+                    class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm font-medium inline-flex items-center">
+                    <svg class="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"/>
+                    </svg>
+                    Sync Checkpoint Now
+                </button>
+            </div>
+            
+            {% if agent.terraform_resources %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Job</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Mode</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for resource in agent.terraform_resources %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 text-sm">
+                                <span class="font-mono text-indigo-600">{{ resource.type }}</span>
+                            </td>
+                            <td class="px-4 py-3 text-sm font-medium text-gray-900">
+                                {{ resource.name }}
+                                {% if resource.index is not none %}
+                                <span class="text-gray-500">[{{ resource.index }}]</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-500 font-mono">
+                                {{ resource.id[:40] }}{% if resource.id|length > 40 %}...{% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm">
+                                <a href="/jobs/{{ resource.job_id }}" class="text-indigo-600 hover:text-indigo-800 font-mono">
+                                    {{ resource.job_id[:8] }}
+                                </a>
+                            </td>
+                            <td class="px-4 py-3 text-sm">
+                                {% if resource.mode == 'managed' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                    Managed
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    {{ resource.mode }}
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <p class="text-sm text-gray-500 mt-3">
+                    Total: {{ agent.terraform_resources|length }} resource(s)
+                </p>
+            </div>
+            {% else %}
+            <div class="text-center py-8">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                </svg>
+                <p class="text-sm text-gray-500 mt-2">No Terraform resources synced yet</p>
+                <p class="text-xs text-gray-400 mt-1">Run a state_sync job to view resources</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="px-6 py-5 border-t border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Recent Jobs</h3>
+            {% if jobs %}
+            <div class="space-y-3">
+                {% for job in jobs[:10] %}
+                <div class="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3">
+                                <span class="font-mono text-sm text-gray-600">{{ job.job_id[:8] }}</span>
+                                {% if job.status == 'pending' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                    Pending
+                                </span>
+                                {% elif job.status == 'running' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    Running
+                                </span>
+                                {% elif job.status == 'completed' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                    Completed
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                    Failed
+                                </span>
+                                {% endif %}
+                                <span class="text-sm text-gray-600">{{ job.operation }}</span>
+                            </div>
+                            <p class="text-sm text-gray-500 mt-1 truncate">{{ job.repo_url }}</p>
+                        </div>
+                        <a href="/jobs/{{ job.job_id }}" class="text-sm text-indigo-600 hover:text-indigo-800">View &rarr;</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-sm text-gray-500">No jobs yet</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
