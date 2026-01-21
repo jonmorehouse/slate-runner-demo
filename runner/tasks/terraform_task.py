@@ -12,7 +12,12 @@ class BaseTerraformTask(Task):
     
     def __init__(self):
         """Initialize Terraform task."""
-        self.terraform = TerraformExecutor()
+        self.terraform = None  # Initialized per execution with version
+    
+    def _get_executor(self, context: TaskContext) -> TerraformExecutor:
+        """Get or create TerraformExecutor with job-specific version."""
+        tf_version = context.config.get('tf_version')
+        return TerraformExecutor(tf_version=tf_version)
     
     def validate(self, context: TaskContext) -> bool:
         """Validate Terraform task context."""
@@ -26,7 +31,8 @@ class BaseTerraformTask(Task):
     
     def cleanup(self, context: TaskContext):
         """Cleanup Terraform working directory."""
-        self.terraform.cleanup()
+        if self.terraform:
+            self.terraform.cleanup()
 
 
 class TerraformPlanTask(BaseTerraformTask):
@@ -40,11 +46,13 @@ class TerraformPlanTask(BaseTerraformTask):
         config = context.config
         
         try:
+            self.terraform = self._get_executor(context)
             success, output, state_path = self.terraform.execute_job(
                 repo_url=config['repo_url'],
                 operation='plan',
                 env_vars=context.env_vars,
-                tfvars=config.get('tfvars')
+                tfvars=config.get('tfvars'),
+                working_dir=config.get('working_dir')
             )
             
             artifacts = {}
@@ -81,11 +89,13 @@ class TerraformApplyTask(BaseTerraformTask):
         config = context.config
         
         try:
+            self.terraform = self._get_executor(context)
             success, output, state_path = self.terraform.execute_job(
                 repo_url=config['repo_url'],
                 operation='apply',
                 env_vars=context.env_vars,
-                tfvars=config.get('tfvars')
+                tfvars=config.get('tfvars'),
+                working_dir=config.get('working_dir')
             )
             
             artifacts = {}
@@ -130,11 +140,13 @@ class TerraformRefreshTask(BaseTerraformTask):
         config = context.config
         
         try:
+            self.terraform = self._get_executor(context)
             success, output, state_path = self.terraform.execute_job(
                 repo_url=config['repo_url'],
                 operation='refresh',
                 env_vars=context.env_vars,
-                tfvars=config.get('tfvars')
+                tfvars=config.get('tfvars'),
+                working_dir=config.get('working_dir')
             )
             
             artifacts = {}

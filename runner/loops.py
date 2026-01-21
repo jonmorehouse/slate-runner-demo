@@ -3,7 +3,7 @@ import time
 import sys
 import psutil
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from config import RunnerConfig
 from storage import RunnerS3Client
@@ -144,19 +144,20 @@ class RunnerLoops:
         
         while self.running:
             try:
-                # Skip if not allowed to execute
-                if not self.config.can_execute_jobs():
-                    if not self.config.adopted:
-                        print(f"[Jobs] ⏳ Waiting for adoption - runner not yet adopted by control plane")
-                    else:
-                        print(f"[Jobs] Skipping - runner state: locked={self.config.locked}, paused={self.config.paused}, read_only={self.config.read_only}")
+                # Check if runner is adopted before fetching jobs
+                if not self.config.adopted:
+                    print(f"[Jobs] ⏸️  Ignoring jobs because: runner not yet adopted by control plane")
                     time.sleep(self.config.poll_interval)
                     continue
                 
-                # Fetch pending job
+                # Fetch pending job and send check timestamp
+                check_timestamp = datetime.now(timezone.utc).isoformat()
                 response = requests.get(
                     f"{self.config.control_plane_url}/api/jobs/pending",
-                    params={'agent_id': self.config.runner_id},
+                    params={
+                        'agent_id': self.config.runner_id,
+                        'check_timestamp': check_timestamp
+                    },
                     timeout=10
                 )
                 
@@ -175,6 +176,13 @@ class RunnerLoops:
                 operation = job.get('operation')
                 
                 print(f"\n[Jobs] 📋 Found pending job: {job_id} (operation: {operation})")
+                
+                # Check if we can execute THIS SPECIFIC job based on its operation type
+                can_execute, reason = self.config.can_execute_jobs_with_reason(operation)
+                if not can_execute:
+                    print(f"[Jobs] ⏸️  Ignoring job {job_id} because: {reason}")
+                    time.sleep(self.config.poll_interval)
+                    continue
                 
                 # Claim the job atomically
                 try:
@@ -222,7 +230,9 @@ class RunnerLoops:
                     task_type=operation,
                     config={
                         'repo_url': job.get('repo_url'),
-                        'tfvars': job.get('tfvars')
+                        'tfvars': job.get('tfvars'),
+                        'tf_version': job.get('tf_version'),
+                        'working_dir': job.get('working_dir')
                     },
                     runner_id=self.config.runner_id,
                     workdir=f"/tmp/runner-{self.config.runner_id}",
@@ -244,20 +254,20 @@ class RunnerLoops:
                 print(f"[Jobs] Executing task: {operation}")
                 result = task.execute(context)
                 
-                # Cleanup
-                task.cleanup(context)
-                
-                # Upload artifacts (state files, etc.)
+                # Upload artifacts (state files, etc.) BEFORE cleanup
                 s3_state_path = None
                 if result.artifacts and 'state_path' in result.artifacts:
                     try:
                         state_path = result.artifacts['state_path']
-                        s3_key = f"states/{job_id}/terraform.tfstate"
+                        s3_key = f"states/{self.config.runner_id}/{job_id}/terraform.tfstate"
                         self.s3_client.upload_file(state_path, s3_key)
                         s3_state_path = s3_key
                         print(f"[Jobs] ✓ Uploaded state to S3: {s3_key}")
                     except Exception as e:
                         print(f"[Jobs] ✗ Failed to upload state: {e}")
+                
+                # Cleanup AFTER uploading artifacts
+                task.cleanup(context)
                 
                 # Upload output
                 try:
@@ -275,9 +285,27 @@ class RunnerLoops:
                 if result.status == TaskStatus.SUCCESS:
                     self._update_job_completed(job_id, result.output, s3_state_path)
                     print(f"[Jobs] ✓ Job {job_id} completed\n")
+                    
+                    # Record job completion in runner's state store
+                    self.state.record_job_completion(job_id, success=True)
+                    
+                    # Handle reconciliation flag based on operation type
+                    if job.get('operation') == 'state_sync':
+                        # State sync jobs clear the reconciliation requirement
+                        if self.config.requires_reconciliation:
+                            self.config.requires_reconciliation = False
+                            print(f"[Jobs] ✓ State reconciled - runner can accept new jobs")
+                    else:
+                        # Non-state_sync jobs require reconciliation after completion
+                        self.config.requires_reconciliation = True
+                        self.config.last_job_completed_at = datetime.now(timezone.utc).isoformat()
+                        print(f"[Jobs] ⚠️  State reconciliation required before next job")
                 else:
                     self._update_job_failed(job_id, result.error or result.output, s3_state_path)
                     print(f"[Jobs] ✗ Job {job_id} failed\n")
+                    
+                    # Record job failure in runner's state store
+                    self.state.record_job_completion(job_id, success=False)
                 
             except Exception as e:
                 print(f"[Jobs] ✗ Error: {e}")
@@ -287,11 +315,13 @@ class RunnerLoops:
             time.sleep(self.config.poll_interval)
     
     def _update_job_completed(self, job_id: str, output: str, state_path: Optional[str] = None):
-        """Update job status to completed."""
+        """Update job status to successful."""
+        now = datetime.now(timezone.utc).isoformat()
         update_payload = {
-            'status': 'completed',
+            'status': 'successful',
             'output': output[:1000],  # Store truncated version
-            'state_path': state_path
+            'state_path': state_path,
+            'finished_at': now
         }
         
         try:
@@ -309,10 +339,12 @@ class RunnerLoops:
     
     def _update_job_failed(self, job_id: str, error: str, state_path: Optional[str] = None):
         """Update job status to failed."""
+        now = datetime.now(timezone.utc).isoformat()
         update_payload = {
             'status': 'failed',
             'error': error[:500],
-            'state_path': state_path
+            'state_path': state_path,
+            'finished_at': now
         }
         
         try:

@@ -2,6 +2,7 @@
 import os
 from dataclasses import dataclass
 from typing import Optional
+from name_generator import generate_runner_name, generate_runner_id
 
 
 @dataclass
@@ -15,13 +16,27 @@ class RunnerConfig:
     paused: bool = False
     read_only: bool = False
     adopted: bool = False
+    requires_reconciliation: bool = False
+    last_job_completed_at: Optional[str] = None
     
     @classmethod
     def from_env(cls) -> 'RunnerConfig':
         """Create config from environment variables."""
+        # Generate ID if not provided
+        runner_id = os.getenv('RUNNER_ID', '').strip()
+        if not runner_id:
+            runner_id = generate_runner_id()
+            print(f"[Config] Generated runner ID: {runner_id}")
+        
+        # Generate name if not provided
+        runner_name = os.getenv('RUNNER_NAME', '').strip()
+        if not runner_name:
+            runner_name = generate_runner_name()
+            print(f"[Config] Generated runner name: {runner_name}")
+        
         return cls(
-            runner_id=os.getenv('RUNNER_ID', 'runner-001'),
-            runner_name=os.getenv('RUNNER_NAME', 'Demo Runner'),
+            runner_id=runner_id,
+            runner_name=runner_name,
             control_plane_url=os.getenv('CONTROL_PLANE_URL', 'http://localhost:5005'),
             poll_interval=int(os.getenv('POLL_INTERVAL', '5'))
         )
@@ -49,4 +64,32 @@ class RunnerConfig:
     
     def can_execute_jobs(self) -> bool:
         """Check if runner can execute jobs."""
-        return self.adopted and not (self.locked or self.paused or self.read_only)
+        can_execute, _ = self.can_execute_jobs_with_reason()
+        return can_execute
+    
+    def can_execute_jobs_with_reason(self, operation: Optional[str] = None) -> tuple:
+        """Check if runner can execute jobs and return reason if not.
+        
+        Args:
+            operation: Job operation type (e.g., 'state_sync', 'plan', 'apply')
+        
+        Returns:
+            (can_execute: bool, reason: str)
+        """
+        if not self.adopted:
+            return False, "runner not yet adopted by control plane"
+        
+        if self.locked:
+            return False, "runner is locked"
+        
+        if self.paused:
+            return False, "runner is paused"
+        
+        if self.read_only:
+            return False, "runner is in read-only mode"
+        
+        # State sync jobs can run even when reconciliation is needed
+        if self.requires_reconciliation and operation != 'state_sync':
+            return False, "state has not been reconciled since last job"
+        
+        return True, ""

@@ -35,7 +35,7 @@ def validate_job_status(status: str) -> bool:
     Returns:
         True if valid, False otherwise
     """
-    valid_statuses = ['pending', 'running', 'completed', 'failed']
+    valid_statuses = ['queued', 'in-progress', 'successful', 'failed']
     return status in valid_statuses
 
 
@@ -62,5 +62,5 @@ def validate_operation(operation: str) -> bool:
     Returns:
         True if valid, False otherwise
     """
-    valid_operations = ['plan', 'apply', 'refresh']
+    valid_operations = ['plan', 'apply', 'refresh', 'state_sync']
     return operation in valid_operations

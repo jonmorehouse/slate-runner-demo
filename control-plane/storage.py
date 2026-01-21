@@ -2,7 +2,7 @@
 import json
 import os
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
 
@@ -17,15 +17,14 @@ class S3Storage:
             bucket_name: S3 bucket name (must already exist)
             prefix: Key prefix for namespacing (e.g., "demo-1/")
         """
+        from botocore.client import Config
+        
         self.bucket_name = bucket_name
         self.prefix = prefix.rstrip('/') + '/' if prefix else ''
-        self.s3_client = boto3.client(
-            's3',
-            endpoint_url=os.getenv('AWS_ENDPOINT_URL'),
-            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-            region_name=os.getenv('AWS_REGION', 'auto')
-        )
+        
+        # Use Tigris profile from ~/.aws/credentials
+        session = boto3.Session(profile_name='tigris')
+        self.s3_client = session.client('s3', config=Config(s3={'addressing_style': 'virtual'}))
         print(f"Initialized S3 storage: bucket={self.bucket_name}, prefix={self.prefix}")
     
     def get(self, key: str) -> Optional[Dict[str, Any]]:
@@ -95,8 +94,9 @@ class MetaStorage:
     
     def __init__(self):
         """Initialize meta storage."""
-        bucket_name = os.getenv('SLATE_META_BUCKET', 'slate-demo-meta')
-        prefix = os.getenv('BUCKET_PREFIX', '')
+        # Use CONTROL_PLANE_BUCKET and CONTROL_PLANE_BUCKET_PREFIX
+        bucket_name = os.getenv('CONTROL_PLANE_BUCKET', 'slate-demo-meta')
+        prefix = os.getenv('CONTROL_PLANE_BUCKET_PREFIX', '')
         self.storage = S3Storage(bucket_name, prefix)
     
     # Agent operations
@@ -140,6 +140,36 @@ class MetaStorage:
         # Sort by created_at descending
         jobs.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         return jobs
+    
+    def claim_job(self, job_id: str, agent_id: str) -> tuple:
+        """Atomically claim a pending job.
+        
+        Args:
+            job_id: Job ID to claim
+            agent_id: Agent claiming the job
+            
+        Returns:
+            (success, error_message)
+        """
+        from models import Job, JobStatus
+        
+        job_data = self.get_job(job_id)
+        
+        if not job_data:
+            return False, "Job not found"
+        
+        current_status = job_data.get('status')
+        if current_status != JobStatus.QUEUED.value:
+            return False, f"Job status is {current_status}, expected queued"
+        
+        # Update job to in-progress
+        job = Job.from_dict(job_data)
+        job.status = JobStatus.IN_PROGRESS.value
+        job.started_at = datetime.now(timezone.utc).isoformat()
+        job.agent_id = agent_id
+        
+        self.save_job(job.to_dict())
+        return True, ""
     
     # Health check operations
     def save_health_check(self, health_dict: Dict[str, Any]) -> None:
@@ -186,13 +216,27 @@ class RunnerStorage:
     
     def __init__(self):
         """Initialize runner storage."""
-        bucket_name = os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner')
-        prefix = os.getenv('BUCKET_PREFIX', '')
+        # Use CONTROL_PLANE_BUCKET and CONTROL_PLANE_BUCKET_PREFIX
+        # Control plane accesses runner data under /runners path
+        bucket_name = os.getenv('CONTROL_PLANE_BUCKET', 'slate-demo-meta')
+        base_prefix = os.getenv('CONTROL_PLANE_BUCKET_PREFIX', '').rstrip('/')
+        prefix = f"{base_prefix}/runners" if base_prefix else "runners"
         self.storage = S3Storage(bucket_name, prefix)
     
-    def save_state(self, job_id: str, state_data: bytes) -> str:
-        """Save Terraform state file."""
-        key = f"states/{job_id}/terraform.tfstate"
+    def save_state(self, job_id: str, state_data: bytes, runner_id: str = None) -> str:
+        """Save Terraform state file.
+        
+        Args:
+            job_id: Job identifier
+            state_data: Terraform state file content
+            runner_id: Optional runner ID for isolation (recommended)
+        """
+        if runner_id:
+            key = f"states/{runner_id}/{job_id}/terraform.tfstate"
+        else:
+            # Backwards compatibility fallback
+            key = f"states/{job_id}/terraform.tfstate"
+        
         self.storage.s3_client.put_object(
             Bucket=self.storage.bucket_name,
             Key=key,
@@ -201,8 +245,28 @@ class RunnerStorage:
         )
         return key
     
-    def get_state(self, job_id: str) -> Optional[bytes]:
-        """Get Terraform state file."""
+    def get_state(self, job_id: str, runner_id: str = None) -> Optional[bytes]:
+        """Get Terraform state file.
+        
+        Args:
+            job_id: Job identifier
+            runner_id: Optional runner ID for isolation (tries new path first, falls back to old)
+        """
+        # Try new isolated path first if runner_id provided
+        if runner_id:
+            key = f"states/{runner_id}/{job_id}/terraform.tfstate"
+            try:
+                response = self.storage.s3_client.get_object(
+                    Bucket=self.storage.bucket_name, 
+                    Key=key
+                )
+                return response['Body'].read()
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'NoSuchKey':
+                    raise
+                # Fall through to try old path
+        
+        # Backwards compatibility: try old path
         key = f"states/{job_id}/terraform.tfstate"
         try:
             response = self.storage.s3_client.get_object(
@@ -257,13 +321,13 @@ class RunnerStorage:
             return False, "Job not found"
         
         current_status = job_data.get('status')
-        if current_status != JobStatus.PENDING.value:
-            return False, f"Job status is {current_status}, expected pending"
+        if current_status != JobStatus.QUEUED.value:
+            return False, f"Job status is {current_status}, expected queued"
         
-        # Update job to running
+        # Update job to in-progress
         job = Job.from_dict(job_data)
-        job.status = JobStatus.RUNNING.value
-        job.started_at = datetime.utcnow().isoformat()
+        job.status = JobStatus.IN_PROGRESS.value
+        job.started_at = datetime.now(timezone.utc).isoformat()
         job.agent_id = agent_id
         
         self.save_job(job.to_dict())
@@ -296,9 +360,9 @@ class RunnerStorage:
         
         # Define valid transitions
         valid_transitions = {
-            JobStatus.PENDING.value: [JobStatus.RUNNING.value],
-            JobStatus.RUNNING.value: [JobStatus.COMPLETED.value, JobStatus.FAILED.value],
-            JobStatus.COMPLETED.value: [],
+            JobStatus.QUEUED.value: [JobStatus.IN_PROGRESS.value],
+            JobStatus.IN_PROGRESS.value: [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value],
+            JobStatus.SUCCESSFUL.value: [],
             JobStatus.FAILED.value: []
         }
         
@@ -311,10 +375,11 @@ class RunnerStorage:
         job.status = to_status
         
         # Set timestamps
-        if to_status == JobStatus.RUNNING.value:
-            job.started_at = datetime.utcnow().isoformat()
-        elif to_status in [JobStatus.COMPLETED.value, JobStatus.FAILED.value]:
-            job.completed_at = datetime.utcnow().isoformat()
+        if to_status == JobStatus.IN_PROGRESS.value:
+            job.started_at = datetime.now(timezone.utc).isoformat()
+        elif to_status in [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value]:
+            job.completed_at = datetime.now(timezone.utc).isoformat()
+            job.finished_at = datetime.now(timezone.utc).isoformat()
         
         # Apply additional updates
         for key, value in updates.items():

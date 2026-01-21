@@ -8,16 +8,17 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - SLATE_META_BUCKET=${SLATE_META_BUCKET}
-      - SLATE_RUNNER_BUCKET=${SLATE_RUNNER_BUCKET}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
-      - AWS_REGION=${AWS_REGION}
+      # Bucket configuration
+      - CONTROL_PLANE_BUCKET=${CONTROL_PLANE_BUCKET}
+      - CONTROL_PLANE_BUCKET_PREFIX=${CONTROL_PLANE_BUCKET_PREFIX}
+      - RUNNER_BUCKET=${RUNNER_BUCKET}
+      - RUNNER_BUCKET_PREFIX=${RUNNER_BUCKET_PREFIX}
+      # Flask configuration
       - FLASK_ENV=development
       - SECRET_KEY=${SECRET_KEY}
     volumes:
       - ./control-plane:/app
+      - ~/.aws:/root/.aws:ro  # Mount AWS credentials for Tigris profile
     restart: unless-stopped
     networks:
       - slate-network
@@ -27,17 +28,19 @@ services:
       context: ./runner
       dockerfile: Dockerfile
     environment:
+      # Runner configuration
       - RUNNER_ID=runner-001
       - RUNNER_NAME=Runner 1
       - CONTROL_PLANE_URL=http://control-plane:5000
       - POLL_INTERVAL=5
-      - SLATE_RUNNER_BUCKET=${SLATE_RUNNER_BUCKET}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
-      - AWS_REGION=${AWS_REGION}
+      # Bucket configuration
+      - RUNNER_BUCKET=${RUNNER_BUCKET}
+      - RUNNER_BUCKET_PREFIX=${RUNNER_BUCKET_PREFIX}
+      - SLATEDB_TMP_DIR=/tmp/slatedb
     volumes:
       - ./runner:/app
+      - runner-1-slatedb:/tmp/slatedb
+      - ~/.aws:/root/.aws:ro  # Mount AWS credentials for Tigris profile
     depends_on:
       - control-plane
     restart: unless-stopped
@@ -49,22 +52,28 @@ services:
       context: ./runner
       dockerfile: Dockerfile
     environment:
+      # Runner configuration
       - RUNNER_ID=runner-002
       - RUNNER_NAME=Runner 2
       - CONTROL_PLANE_URL=http://control-plane:5000
       - POLL_INTERVAL=5
-      - SLATE_RUNNER_BUCKET=${SLATE_RUNNER_BUCKET}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
-      - AWS_REGION=${AWS_REGION}
+      # Bucket configuration
+      - RUNNER_BUCKET=${RUNNER_BUCKET}
+      - RUNNER_BUCKET_PREFIX=${RUNNER_BUCKET_PREFIX}
+      - SLATEDB_TMP_DIR=/tmp/slatedb
     volumes:
       - ./runner:/app
+      - runner-2-slatedb:/tmp/slatedb
+      - ~/.aws:/root/.aws:ro  # Mount AWS credentials for Tigris profile
     depends_on:
       - control-plane
     restart: unless-stopped
     networks:
       - slate-network
+
+volumes:
+  runner-1-slatedb:
+  runner-2-slatedb:
 
 networks:
   slate-network:

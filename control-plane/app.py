@@ -1,7 +1,7 @@
 """Main Flask application for the control plane."""
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -102,9 +102,13 @@ def agent_detail(agent_id):
         return "Agent not found", 404
     
     agent = Agent.from_dict(agent_data)
-    jobs = meta_storage.list_jobs(agent_id=agent_id)
+    all_jobs = meta_storage.list_jobs(agent_id=agent_id)
     
-    return render_template('agent_detail.html', agent=agent, jobs=jobs)
+    # Separate jobs into queued (active) and recent (all jobs for history)
+    queued_jobs = [j for j in all_jobs if j['status'] in [JobStatus.QUEUED.value, JobStatus.IN_PROGRESS.value]]
+    recent_jobs = all_jobs  # All jobs for the recent jobs section
+    
+    return render_template('agent_detail.html', agent=agent, jobs=queued_jobs, recent_jobs=recent_jobs)
 
 
 @app.route('/graph')
@@ -133,8 +137,20 @@ def graph_view():
 def jobs_page():
     """Jobs list page."""
     jobs = meta_storage.list_jobs()
-    agents = meta_storage.list_agents()
-    return render_template('jobs.html', jobs=jobs, agents=agents)
+    all_agents = meta_storage.list_agents()
+    
+    # Filter to only online agents for job scheduling
+    online_agents = []
+    for agent_data in all_agents:
+        agent = Agent.from_dict(agent_data)
+        if agent.is_online():
+            agent.status = AgentStatus.ONLINE.value
+            online_agents.append(agent.to_dict())
+    
+    # Get pre-selected agent_id from query params (for "Create Job" button on runner page)
+    selected_agent_id = request.args.get('agent_id')
+    
+    return render_template('jobs.html', jobs=jobs, agents=online_agents, selected_agent_id=selected_agent_id)
 
 
 @app.route('/jobs/<job_id>')
@@ -277,7 +293,7 @@ def adopt_agent(agent_id):
     
     # Mark as adopted
     agent.adopted = True
-    agent.adopted_at = datetime.utcnow().isoformat()
+    agent.adopted_at = datetime.now(timezone.utc).isoformat()
     
     # Optional: track who adopted
     data = request.json or {}
@@ -300,6 +316,24 @@ def unadopt_agent(agent_id):
     agent.adopted = False
     agent.adopted_at = None
     agent.adopted_by = None
+    
+    meta_storage.save_agent(agent.to_dict())
+    
+    return jsonify(agent.to_dict()), 200
+
+
+@app.route('/api/agents/<agent_id>/lock', methods=['POST'])
+def lock_agent(agent_id):
+    """Lock or unlock a runner agent."""
+    agent_data = meta_storage.get_agent(agent_id)
+    if not agent_data:
+        return jsonify({'error': 'Agent not found'}), 404
+    
+    data = request.json or {}
+    lock_state = data.get('locked', True)  # Default to locking
+    
+    agent = Agent.from_dict(agent_data)
+    agent.locked = lock_state
     
     meta_storage.save_agent(agent.to_dict())
     
@@ -417,44 +451,71 @@ def submit_health_check():
 @app.route('/api/jobs', methods=['POST'])
 def create_job():
     """Create a new job."""
-    data = request.json
-    
-    valid, error = validate_required_fields(data, ['agent_id', 'repo_url'])
-    if not valid:
-        return jsonify({'error': error}), 400
-    
-    if not validate_repo_url(data['repo_url']):
-        return jsonify({'error': 'Invalid repository URL'}), 400
-    
-    operation = data.get('operation', 'plan')
-    if not validate_operation(operation):
-        return jsonify({'error': 'Invalid operation type'}), 400
-    
-    agent_id = data.get('agent_id')
-    repo_url = data.get('repo_url')
-    operation = data.get('operation', 'plan')
-    
-    if not agent_id or not repo_url:
-        return jsonify({'error': 'agent_id and repo_url are required'}), 400
-    
-    # Verify agent exists
-    agent_data = meta_storage.get_agent(agent_id)
-    if not agent_data:
-        return jsonify({'error': 'Agent not found'}), 404
-    
-    job = Job(
-        job_id=str(uuid.uuid4()),
-        agent_id=agent_id,
-        repo_url=repo_url,
-        operation=operation,
-        status=JobStatus.PENDING.value,
-        env_vars=data.get('env_vars'),
-        tfvars=data.get('tfvars'),
-        created_at=datetime.utcnow().isoformat()
-    )
-    
-    meta_storage.save_job(job.to_dict())
-    return jsonify(job.to_dict()), 201
+    try:
+        data = request.json
+        
+        # Debug logging
+        print(f"[API] POST /api/jobs - Content-Type: {request.content_type}")
+        print(f"[API] Request data: {data}")
+        
+        if not data:
+            return jsonify({'error': 'Request body must be JSON'}), 400
+        
+        operation = data.get('operation', 'plan')
+        if not validate_operation(operation):
+            return jsonify({'error': 'Invalid operation type'}), 400
+        
+        # For state_sync, repo_url is optional (not used)
+        if operation == 'state_sync':
+            valid, error = validate_required_fields(data, ['agent_id'])
+            if not valid:
+                print(f"[API] Validation error: {error}")
+                return jsonify({'error': error}), 400
+        else:
+            valid, error = validate_required_fields(data, ['agent_id', 'repo_url'])
+            if not valid:
+                print(f"[API] Validation error: {error}")
+                return jsonify({'error': error}), 400
+            
+            if not validate_repo_url(data['repo_url']):
+                return jsonify({'error': 'Invalid repository URL'}), 400
+        
+        agent_id = data.get('agent_id')
+        repo_url = data.get('repo_url', '')
+        
+        # Verify agent exists
+        agent_data = meta_storage.get_agent(agent_id)
+        if not agent_data:
+            return jsonify({'error': 'Agent not found'}), 404
+        
+        # Handle optional fields - normalize empty to None
+        env_vars = data.get('env_vars') or None
+        tfvars = data.get('tfvars') or None
+        tf_version = data.get('tf_version') or None
+        working_dir = data.get('working_dir') or None
+        
+        job = Job(
+            job_id=str(uuid.uuid4()),
+            agent_id=agent_id,
+            repo_url=repo_url,
+            operation=operation,
+            status=JobStatus.QUEUED.value,
+            env_vars=env_vars,
+            tfvars=tfvars,
+            tf_version=tf_version,
+            working_dir=working_dir,
+            created_at=datetime.now(timezone.utc).isoformat()
+        )
+        
+        print(f"[API] Created job {job.job_id} for agent {agent_id}")
+        meta_storage.save_job(job.to_dict())
+        return jsonify(job.to_dict()), 201
+        
+    except Exception as e:
+        print(f"[API] Error creating job: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/jobs', methods=['GET'])
@@ -469,11 +530,21 @@ def list_jobs():
 def get_pending_jobs():
     """Get pending jobs for an agent."""
     agent_id = request.args.get('agent_id')
+    check_timestamp = request.args.get('check_timestamp')
+    
     if not agent_id:
         return jsonify({'error': 'agent_id is required'}), 400
     
+    # Update agent's last_job_check_at timestamp
+    if check_timestamp:
+        agent_data = meta_storage.get_agent(agent_id)
+        if agent_data:
+            agent = Agent.from_dict(agent_data)
+            agent.last_job_check_at = check_timestamp
+            meta_storage.save_agent(agent.to_dict())
+    
     jobs = meta_storage.list_jobs(agent_id=agent_id)
-    pending = [j for j in jobs if j['status'] == JobStatus.PENDING.value]
+    pending = [j for j in jobs if j['status'] == JobStatus.QUEUED.value]
     
     # Return only the first pending job
     if pending:
@@ -542,10 +613,17 @@ def update_job(job_id):
     # Update fields
     if 'status' in data:
         job.status = data['status']
-        if data['status'] == JobStatus.RUNNING.value and not job.started_at:
-            job.started_at = datetime.utcnow().isoformat()
-        elif data['status'] in [JobStatus.COMPLETED.value, JobStatus.FAILED.value]:
-            job.completed_at = datetime.utcnow().isoformat()
+        if data['status'] == JobStatus.IN_PROGRESS.value and not job.started_at:
+            job.started_at = datetime.now(timezone.utc).isoformat()
+        elif data['status'] in [JobStatus.SUCCESSFUL.value, JobStatus.FAILED.value]:
+            if not job.completed_at:
+                job.completed_at = datetime.now(timezone.utc).isoformat()
+            if not job.finished_at:
+                job.finished_at = datetime.now(timezone.utc).isoformat()
+    
+    # Allow explicit finished_at to be set via API
+    if 'finished_at' in data:
+        job.finished_at = data['finished_at']
     
     if 'output' in data:
         job.output = data['output']

@@ -3,6 +3,7 @@ import json
 import os
 from typing import Optional, Dict, Any
 from datetime import datetime
+from botocore.client import Config
 import boto3
 from botocore.exceptions import ClientError
 
@@ -17,17 +18,13 @@ class RunnerStateManager:
             runner_id: Unique runner identifier
         """
         self.runner_id = runner_id
-        self.bucket_name = os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner')
-        self.prefix = os.getenv('BUCKET_PREFIX', '').rstrip('/') + '/' if os.getenv('BUCKET_PREFIX', '') else ''
+        self.bucket_name = os.getenv('RUNNER_BUCKET', 'slate-demo-runner')
+        self.prefix = os.getenv('RUNNER_BUCKET_PREFIX', '').rstrip('/') + '/' if os.getenv('RUNNER_BUCKET_PREFIX', '') else ''
         self.state_key = f"{self.prefix}runner-state/{runner_id}/state.json"
         
-        self.s3_client = boto3.client(
-            's3',
-            endpoint_url=os.getenv('AWS_ENDPOINT_URL'),
-            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-            region_name=os.getenv('AWS_REGION', 'auto')
-        )
+        session = boto3.Session(profile_name='tigris')
+        self.s3_client = session.client(
+            's3', config=Config(s3={'addressing_style': 'virtual'}))
         
         print(f"[StateManager] Using bucket={self.bucket_name}, prefix={self.prefix}, state_key={self.state_key}")
         self._state = self._load_state()
@@ -89,3 +86,32 @@ class RunnerStateManager:
     def get_state(self) -> Dict[str, Any]:
         """Get entire state."""
         return self._state.copy()
+    
+    def record_job_completion(self, job_id: str, success: bool = True) -> None:
+        """Record a completed job ID.
+        
+        Args:
+            job_id: The job ID to record
+            success: Whether the job succeeded or failed
+        """
+        if 'completed_jobs' not in self._state:
+            self._state['completed_jobs'] = []
+        
+        job_record = {
+            'job_id': job_id,
+            'completed_at': datetime.utcnow().isoformat(),
+            'success': success
+        }
+        
+        self._state['completed_jobs'].append(job_record)
+        
+        # Update counters
+        if success:
+            self.increment('jobs_completed')
+        else:
+            self.increment('jobs_failed')
+        
+        print(f"[StateManager] Recorded job {job_id} (success={success})")
+        
+        # Save state to S3
+        self.save()

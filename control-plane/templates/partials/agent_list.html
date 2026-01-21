@@ -1,79 +1,153 @@
+{% from "macros/status.html" import agent_status_badge %}
 {% if agents %}
-<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {# Split agents into online and offline #}
+    {% set online_agents = [] %}
+    {% set offline_agents = [] %}
     {% for agent in agents %}
-    <div class="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow">
-        <div class="p-5">
-            <div class="flex items-center justify-between">
-                <div class="flex-1 min-w-0">
-                    <h3 class="text-lg font-medium text-gray-900 truncate">
-                        <a href="/agents/{{ agent.agent_id }}" class="hover:text-indigo-600">
-                            {{ agent.name }}
-                        </a>
-                    </h3>
-                    <p class="text-sm text-gray-500 truncate">{{ agent.agent_id }}</p>
+        {% if agent.status == 'online' %}
+            {{ online_agents.append(agent) or '' }}
+        {% else %}
+            {{ offline_agents.append(agent) or '' }}
+        {% endif %}
+    {% endfor %}
+    
+    {# Online Runners Section #}
+    {% if online_agents %}
+    <div class="mb-8">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <span class="inline-flex items-center justify-center h-8 w-8 rounded-full bg-green-100 text-green-800 mr-2 text-sm font-bold">
+                {{ online_agents|length }}
+            </span>
+            Online Runners
+        </h3>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {% for agent in online_agents %}
+            <div class="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow border-l-4 border-green-500">
+                <div class="p-5">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-lg font-medium text-gray-900 truncate">
+                                <a href="/agents/{{ agent.agent_id }}" class="hover:text-indigo-600">
+                                    {{ agent.name }}
+                                </a>
+                            </h3>
+                            <p class="text-sm text-gray-500 truncate">{{ agent.agent_id }}</p>
+                        </div>
+                        <div class="ml-4">
+                            {{ agent_status_badge(agent.status) }}
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        {% if agent.adopted %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            ✓ Adopted
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                            ⏳ Pending
+                        </span>
+                        {% endif %}
+                        
+                        {% if agent.last_state_sync %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                            📸 Synced
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                            ⚪ No Checkpoint
+                        </span>
+                        {% endif %}
+                        
+                        {% if agent.locked %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                            🔒 Locked
+                        </span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mt-4 text-xs text-gray-500">
+                        {% if agent.last_heartbeat %}
+                        Last seen: {{ agent.last_heartbeat[:19] }}
+                        {% else %}
+                        Never seen
+                        {% endif %}
+                    </div>
                 </div>
-                <div class="ml-4">
-                    {% if agent.status == 'online' %}
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        Online
-                    </span>
-                    {% else %}
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        Offline
-                    </span>
-                    {% endif %}
-                </div>
             </div>
-            
-            <div class="mt-4 flex flex-wrap gap-2">
-                {% if agent.adopted %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                    ✓ Adopted
-                </span>
-                {% else %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                    ⏳ Pending
-                </span>
-                {% endif %}
-                
-                {% if agent.last_state_sync %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
-                    📸 Synced
-                </span>
-                {% else %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                    ⚪ No Checkpoint
-                </span>
-                {% endif %}
-                
-                {% if agent.locked %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                    🔒 Locked
-                </span>
-                {% endif %}
-                {% if agent.paused %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                    ⏸ Paused
-                </span>
-                {% endif %}
-                {% if agent.read_only %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                    👁 Read-only
-                </span>
-                {% endif %}
-            </div>
-            
-            <div class="mt-4 text-xs text-gray-500">
-                {% if agent.last_heartbeat %}
-                Last seen: {{ agent.last_heartbeat[:19] }}
-                {% else %}
-                Never seen
-                {% endif %}
-            </div>
+            {% endfor %}
         </div>
     </div>
-    {% endfor %}
-</div>
+    {% endif %}
+    
+    {# Offline Runners Section #}
+    {% if offline_agents %}
+    <div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <span class="inline-flex items-center justify-center h-8 w-8 rounded-full bg-gray-100 text-gray-800 mr-2 text-sm font-bold">
+                {{ offline_agents|length }}
+            </span>
+            Offline Runners
+        </h3>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {% for agent in offline_agents %}
+            <div class="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow border-l-4 border-gray-300">
+                <div class="p-5">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-lg font-medium text-gray-900 truncate">
+                                <a href="/agents/{{ agent.agent_id }}" class="hover:text-indigo-600">
+                                    {{ agent.name }}
+                                </a>
+                            </h3>
+                            <p class="text-sm text-gray-500 truncate">{{ agent.agent_id }}</p>
+                        </div>
+                        <div class="ml-4">
+                            {{ agent_status_badge(agent.status) }}
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        {% if agent.adopted %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            ✓ Adopted
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                            ⏳ Pending
+                        </span>
+                        {% endif %}
+                        
+                        {% if agent.last_state_sync %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                            📸 Synced
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                            ⚪ No Checkpoint
+                        </span>
+                        {% endif %}
+                        
+                        {% if agent.locked %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                            🔒 Locked
+                        </span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mt-4 text-xs text-gray-500">
+                        {% if agent.last_heartbeat %}
+                        Last seen: {{ agent.last_heartbeat[:19] }}
+                        {% else %}
+                        Never seen
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 {% else %}
 <div class="text-center py-12 bg-white rounded-lg shadow">
     <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

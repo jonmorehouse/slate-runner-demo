@@ -2,12 +2,17 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies including Terraform
+# Install system dependencies including Terraform and build tools for SlateDB
 RUN apt-get update && apt-get install -y \
     git \
     wget \
     unzip \
+    gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
+
+# Create SlateDB tmp directory
+RUN mkdir -p /tmp/slatedb && chmod 777 /tmp/slatedb
 
 # Install Terraform
 RUN wget https://releases.hashicorp.com/terraform/1.6.6/terraform_1.6.6_linux_amd64.zip \

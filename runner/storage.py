@@ -9,15 +9,14 @@ class RunnerS3Client:
     
     def __init__(self):
         """Initialize S3 client."""
-        self.bucket_name = os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner')
-        self.prefix = os.getenv('BUCKET_PREFIX', '').rstrip('/') + '/' if os.getenv('BUCKET_PREFIX', '') else ''
-        self.s3_client = boto3.client(
-            's3',
-            endpoint_url=os.getenv('AWS_ENDPOINT_URL'),
-            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-            region_name=os.getenv('AWS_REGION', 'auto')
-        )
+        from botocore.client import Config
+        
+        self.bucket_name = os.getenv('RUNNER_BUCKET', 'slate-demo-runner')
+        self.prefix = os.getenv('RUNNER_BUCKET_PREFIX', '').rstrip('/') + '/' if os.getenv('RUNNER_BUCKET_PREFIX', '') else ''
+
+        # Use Tigris profile from ~/.aws/credentials
+        session = boto3.Session(profile_name='tigris')
+        self.s3_client = session.client('s3', config=Config(s3={'addressing_style': 'virtual'}))
         print(f"[Storage] Using bucket={self.bucket_name}, prefix={self.prefix}")
     
     def upload_file(self, local_path: str, s3_key: str) -> str:
