@@ -223,9 +223,20 @@ class RunnerStorage:
         prefix = f"{base_prefix}/runners" if base_prefix else "runners"
         self.storage = S3Storage(bucket_name, prefix)
     
-    def save_state(self, job_id: str, state_data: bytes) -> str:
-        """Save Terraform state file."""
-        key = f"states/{job_id}/terraform.tfstate"
+    def save_state(self, job_id: str, state_data: bytes, runner_id: str = None) -> str:
+        """Save Terraform state file.
+        
+        Args:
+            job_id: Job identifier
+            state_data: Terraform state file content
+            runner_id: Optional runner ID for isolation (recommended)
+        """
+        if runner_id:
+            key = f"states/{runner_id}/{job_id}/terraform.tfstate"
+        else:
+            # Backwards compatibility fallback
+            key = f"states/{job_id}/terraform.tfstate"
+        
         self.storage.s3_client.put_object(
             Bucket=self.storage.bucket_name,
             Key=key,
@@ -234,8 +245,28 @@ class RunnerStorage:
         )
         return key
     
-    def get_state(self, job_id: str) -> Optional[bytes]:
-        """Get Terraform state file."""
+    def get_state(self, job_id: str, runner_id: str = None) -> Optional[bytes]:
+        """Get Terraform state file.
+        
+        Args:
+            job_id: Job identifier
+            runner_id: Optional runner ID for isolation (tries new path first, falls back to old)
+        """
+        # Try new isolated path first if runner_id provided
+        if runner_id:
+            key = f"states/{runner_id}/{job_id}/terraform.tfstate"
+            try:
+                response = self.storage.s3_client.get_object(
+                    Bucket=self.storage.bucket_name, 
+                    Key=key
+                )
+                return response['Body'].read()
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'NoSuchKey':
+                    raise
+                # Fall through to try old path
+        
+        # Backwards compatibility: try old path
         key = f"states/{job_id}/terraform.tfstate"
         try:
             response = self.storage.s3_client.get_object(

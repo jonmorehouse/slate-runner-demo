@@ -259,7 +259,7 @@ class RunnerLoops:
                 if result.artifacts and 'state_path' in result.artifacts:
                     try:
                         state_path = result.artifacts['state_path']
-                        s3_key = f"states/{job_id}/terraform.tfstate"
+                        s3_key = f"states/{self.config.runner_id}/{job_id}/terraform.tfstate"
                         self.s3_client.upload_file(state_path, s3_key)
                         s3_state_path = s3_key
                         print(f"[Jobs] ✓ Uploaded state to S3: {s3_key}")

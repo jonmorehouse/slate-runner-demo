@@ -36,13 +36,14 @@ class StateSyncTask(Task):
             # Get current state
             runner_state = state_manager.get_state()
             
-            # Collect all Terraform state files from S3
+            # Collect all Terraform state files from S3 FOR THIS RUNNER ONLY
             s3_client = RunnerS3Client()
             terraform_states = []
             
             try:
-                # List all state files in the states/ prefix
-                state_files = s3_client.list_objects('states/')
+                # List state files ONLY for this runner using runner-isolated prefix
+                runner_states_prefix = f'states/{context.runner_id}/'
+                state_files = s3_client.list_objects(runner_states_prefix)
                 
                 for state_key in state_files:
                     if state_key.endswith('terraform.tfstate'):
@@ -51,8 +52,9 @@ class StateSyncTask(Task):
                             state_data = s3_client.get_object(state_key)
                             state_json = json.loads(state_data.decode('utf-8'))
                             
-                            # Extract job_id from path (states/{job_id}/terraform.tfstate)
-                            job_id = state_key.split('/')[1] if len(state_key.split('/')) > 1 else 'unknown'
+                            # Extract job_id from path (states/{runner_id}/{job_id}/terraform.tfstate)
+                            path_parts = state_key.split('/')
+                            job_id = path_parts[2] if len(path_parts) > 2 else 'unknown'
                             
                             terraform_states.append({
                                 'job_id': job_id,
