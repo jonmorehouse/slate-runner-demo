@@ -37,7 +37,7 @@ class Runner:
                 'metadata': {
                     'version': '1.0.0',
                     'platform': sys.platform,
-                    'state_bucket': os.getenv('SLATE_RUNNER_BUCKET', 'slate-demo-runner')
+                    'state_bucket': os.getenv('RUNNER_BUCKET', 'slate-demo-runner')
                 }
             }
             

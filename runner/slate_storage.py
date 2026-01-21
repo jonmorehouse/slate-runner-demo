@@ -62,39 +62,33 @@ class SlateDBStorage:
         # Store AWS config
         self.aws_config = aws_config
         
-        # Fetch credentials using boto3 credential chain
+        # Fetch credentials using boto3 credential chain with Tigris profile
         # SlateDB doesn't use the credential chain automatically, so we need to fetch and pass them
         print(f"[SlateDB] Fetching AWS credentials using boto3 credential chain...")
         try:
             import boto3
+            from botocore.client import Config
             from botocore.exceptions import ClientError, NoCredentialsError
             
-            # Create a session to access credentials
-            session = boto3.Session(
-                region_name=aws_config.get('region')
-            )
+            # Create a session with Tigris profile
+            session = boto3.Session(profile_name='tigris')
             
-            # Get credentials from the session (uses credential chain)
+            # Get credentials from the session (uses Tigris profile)
             credentials = session.get_credentials()
             
             if not credentials:
                 print(f"[SlateDB] ✗ No AWS credentials found!")
-                print(f"[SlateDB] Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
-                print(f"[SlateDB] Or configure AWS CLI with: aws configure")
+                print(f"[SlateDB] Please configure Tigris profile in ~/.aws/credentials")
                 raise NoCredentialsError()
             
             # Get the frozen credentials
             frozen_creds = credentials.get_frozen_credentials()
             
-            print(f"[SlateDB] ✓ Retrieved credentials from boto3 credential chain")
+            print(f"[SlateDB] ✓ Retrieved credentials from Tigris profile")
             print(f"[SlateDB] Credential type: {type(credentials).__name__}")
             
-            # Test S3 connectivity with Tigris/S3-compatible backend
-            s3_kwargs = {}
-            if aws_config.get('endpoint_url'):
-                s3_kwargs['endpoint_url'] = aws_config.get('endpoint_url')
-            
-            s3_test = session.client('s3', **s3_kwargs)
+            # Test S3 connectivity with Tigris
+            s3_test = session.client('s3', config=Config(s3={'addressing_style': 'virtual'}))
             
             try:
                 s3_test.head_bucket(Bucket=bucket_name)

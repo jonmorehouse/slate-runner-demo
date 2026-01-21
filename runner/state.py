@@ -19,7 +19,7 @@ class RunnerStateManager:
         """
         self.runner_id = runner_id
         self.bucket_name = os.getenv('RUNNER_BUCKET', 'slate-demo-runner')
-        self.prefix = os.getenv('BUCKET_PREFIX', '').rstrip('/') + '/' if os.getenv('BUCKET_PREFIX', '') else ''
+        self.prefix = os.getenv('RUNNER_BUCKET_PREFIX', '').rstrip('/') + '/' if os.getenv('RUNNER_BUCKET_PREFIX', '') else ''
         self.state_key = f"{self.prefix}runner-state/{runner_id}/state.json"
         
         session = boto3.Session(profile_name='tigris')
