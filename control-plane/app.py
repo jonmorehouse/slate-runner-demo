@@ -137,8 +137,20 @@ def graph_view():
 def jobs_page():
     """Jobs list page."""
     jobs = meta_storage.list_jobs()
-    agents = meta_storage.list_agents()
-    return render_template('jobs.html', jobs=jobs, agents=agents)
+    all_agents = meta_storage.list_agents()
+    
+    # Filter to only online agents for job scheduling
+    online_agents = []
+    for agent_data in all_agents:
+        agent = Agent.from_dict(agent_data)
+        if agent.is_online():
+            agent.status = AgentStatus.ONLINE.value
+            online_agents.append(agent.to_dict())
+    
+    # Get pre-selected agent_id from query params (for "Create Job" button on runner page)
+    selected_agent_id = request.args.get('agent_id')
+    
+    return render_template('jobs.html', jobs=jobs, agents=online_agents, selected_agent_id=selected_agent_id)
 
 
 @app.route('/jobs/<job_id>')
